@@ -1,0 +1,2461 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>교실 은행</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ==================== SUPABASE CONFIG ====================
+// 👇 아래 두 값을 본인의 Supabase 프로젝트 값으로 교체하세요
+const SUPABASE_URL = 'https://yqmmvlzampxgrrratjsg.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlxbW12bHphbXB4Z3JycmF0anNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1NzIxNjIsImV4cCI6MjA4OTE0ODE2Mn0.jd4uzek2uH7jOJaOEQbNpPLuWOqXyu_npgcbcdAcZqo';
+
+let sb = null; // supabase client (초기화 전까지 null)
+let realtimeSubs = []; // 실시간 구독 목록
+
+function initSupabase() {
+  try {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    return true;
+  } catch(e) {
+    console.error('Supabase 초기화 실패:', e);
+    return false;
+  }
+}
+
+// DB 연결 여부 확인 (URL이 기본값이면 오프라인 모드)
+function isDbReady() {
+  return sb && !SUPABASE_URL.includes('YOUR_PROJECT');
+}
+</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:#1a3a5c;--accent:#e8b84b;--success:#2d9e6b;--danger:#d94f4f;
+  --bg:#f5f3ee;--card:#fff;--border:rgba(0,0,0,0.1);--text:#1a1a1a;--muted:#888;
+}
+body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+/* LOGIN */
+#loginScreen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.login-box{background:var(--card);border-radius:16px;border:1px solid var(--border);padding:40px;width:360px;max-width:100%}
+.login-logo{text-align:center;margin-bottom:28px}
+.login-logo .badge{background:var(--accent);color:var(--primary);border-radius:6px;padding:4px 12px;font-size:14px;font-weight:700;display:inline-block;margin-bottom:8px}
+.login-logo h1{font-size:22px;font-weight:700;color:var(--primary)}
+.login-logo p{font-size:13px;color:var(--muted);margin-top:4px}
+.login-type-tabs{display:flex;gap:4px;background:var(--bg);border-radius:8px;padding:4px;margin-bottom:20px}
+.login-type-tab{flex:1;padding:8px;text-align:center;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);border:none;background:transparent;transition:.15s}
+.login-type-tab.active{background:white;color:var(--text)}
+.fl{display:flex;flex-direction:column;gap:12px}
+.fi{display:flex;flex-direction:column;gap:4px}
+.fi label{font-size:12px;color:var(--muted)}
+.fi input,.fi select{padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);width:100%}
+.fi input:focus,.fi select:focus{outline:none;border-color:var(--primary)}
+.btn-login{width:100%;padding:12px;background:var(--primary);color:white;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-top:4px}
+.btn-login:hover{opacity:.9}
+.login-err{color:var(--danger);font-size:13px;text-align:center;min-height:20px}
+/* APP */
+#app{display:none;flex-direction:column;min-height:100vh}
+.nav{background:var(--primary);color:white;height:56px;display:flex;align-items:center;padding:0 20px;gap:8px;position:sticky;top:0;z-index:100;justify-content:space-between}
+.nav-brand{font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px;cursor:pointer}
+.nav-badge{background:var(--accent);color:var(--primary);border-radius:4px;padding:2px 8px;font-size:13px;font-weight:700}
+.nav-tabs{display:flex;gap:4px}
+.nav-tab{background:transparent;border:none;color:rgba(255,255,255,.65);padding:6px 13px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;transition:.15s}
+.nav-tab.active,.nav-tab:hover{background:rgba(255,255,255,.15);color:white}
+.nav-right{font-size:13px;color:rgba(255,255,255,.8);display:flex;align-items:center;gap:8px}
+.nav-bal{background:var(--accent);color:var(--primary);border-radius:20px;padding:3px 12px;font-weight:700;font-size:13px}
+.nav-user-name{font-size:13px;color:rgba(255,255,255,.8)}
+.btn-logout{background:rgba(255,255,255,.15);border:none;color:white;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px}
+/* PAGES */
+.page{display:none;padding:20px;max-width:1100px;margin:0 auto;width:100%}
+.page.active{display:block}
+/* CARDS */
+.card{background:var(--card);border-radius:12px;border:1px solid var(--border);padding:20px}
+.card-title{font-size:15px;font-weight:600;margin-bottom:16px}
+.grid-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.grid-4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.stat{background:var(--bg);border-radius:8px;padding:14px;text-align:center}
+.stat-val{font-size:22px;font-weight:700;color:var(--primary)}
+.stat-label{font-size:12px;color:var(--muted);margin-top:2px}
+.badge-sm{display:inline-block;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600}
+.badge-up{background:#e8f7f0;color:var(--success)}
+.badge-down{background:#fdeaea;color:var(--danger)}
+/* FORM */
+.fg{margin-bottom:14px}
+.fl2{display:flex;flex-direction:column;gap:4px}
+.fl2 label{font-size:12px;color:var(--muted)}
+input.fi2,select.fi2,textarea.fi2{padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);width:100%}
+input.fi2:focus,select.fi2:focus{outline:none;border-color:var(--primary)}
+.btn{padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:.15s}
+.btn-p{background:var(--primary);color:white}.btn-p:hover{opacity:.9}
+.btn-s{background:var(--success);color:white}
+.btn-d{background:var(--danger);color:white}
+.btn-a{background:var(--accent);color:var(--primary)}
+.btn-o{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn-sm2{padding:5px 11px;font-size:12px}
+/* TABS inside page */
+.tabs{display:flex;gap:4px;background:var(--bg);border-radius:8px;padding:4px;margin-bottom:16px}
+.tab{flex:1;padding:7px;text-align:center;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);border:none;background:transparent}
+.tab.active{background:white;color:var(--text)}
+/* TABLE */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--muted);font-weight:500;font-size:12px}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--border)}
+.tbl tr:last-child td{border-bottom:none}
+/* LIST ITEM */
+.li{display:flex;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border);gap:12px}
+.li:last-child{border-bottom:none}
+.ava{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:white;background:var(--primary);flex-shrink:0}
+/* TX */
+.tx-row{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:10px}
+.tx-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.tx-desc{flex:1}
+.tx-title2{font-size:13px;font-weight:500}
+.tx-date{font-size:11px;color:var(--muted)}
+/* STOCK */
+.stock-row{display:flex;align-items:center;padding:11px 12px;border-bottom:1px solid var(--border);gap:10px;cursor:pointer;transition:background .1s}
+.stock-row:hover{background:var(--bg)}
+.stock-row.selected{background:#e8f0fa}
+.slogo{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:white;flex-shrink:0}
+.sinfo{flex:1}
+.sname{font-size:13px;font-weight:600}
+.scode{font-size:11px;color:var(--muted)}
+.sprice{text-align:right}
+.spval{font-size:14px;font-weight:700}
+.spchg{font-size:11px}
+.up{color:var(--danger)}.dn{color:#4a90d9}
+.sparkline{width:56px;height:26px}
+/* NEWS */
+.news-item{padding:11px;border-bottom:1px solid var(--border)}
+.news-item:last-child{border-bottom:none}
+/* STORE */
+.item-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:11px}
+.store-item{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:13px;text-align:center;cursor:pointer;transition:.15s}
+.store-item:hover{border-color:var(--accent);transform:translateY(-2px)}
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--card);border-radius:16px;padding:24px;width:400px;max-width:95vw;max-height:90vh;overflow-y:auto}
+.modal-title{font-size:17px;font-weight:700;margin-bottom:16px}
+.modal-actions{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
+/* TOAST */
+.toast{position:fixed;bottom:20px;right:20px;background:var(--primary);color:white;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:500;z-index:999;transform:translateY(80px);transition:transform .3s;pointer-events:none}
+.toast.show{transform:translateY(0)}
+/* TOGGLE */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--border)}
+.toggle-row:last-child{border-bottom:none}
+.tgl{position:relative;width:44px;height:24px;flex-shrink:0}
+.tgl input{opacity:0;width:0;height:0}
+.tgl-s{position:absolute;inset:0;background:#ccc;border-radius:24px;cursor:pointer;transition:background .2s}
+.tgl-s:before{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:white;border-radius:50%;transition:transform .2s}
+.tgl input:checked+.tgl-s{background:var(--primary)}
+.tgl input:checked+.tgl-s:before{transform:translateX(20px)}
+/* SECTION HEAD */
+.sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.sec-title{font-size:16px;font-weight:700}
+/* SCROLL */
+.scroll-y{overflow-y:auto;max-height:360px}
+/* JOB CARD */
+.job-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px}
+.job-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.job-name{font-size:15px;font-weight:600}
+.job-badge{background:#e8f0fa;color:var(--primary);border-radius:4px;padding:2px 8px;font-size:12px;font-weight:600}
+/* MARKET STATUS */
+.mkt-status{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%}
+.dot-open{background:var(--success);animation:blink 1.5s infinite}
+.dot-closed{background:var(--muted)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+/* SALARY */
+.salary-alert{background:#e8f7f0;border:1px solid #9FE1CB;border-radius:8px;padding:12px 16px;font-size:13px;color:#0F6E56;margin-bottom:14px}
+/* PROFILE */
+.profile-section{background:var(--bg);border-radius:8px;padding:14px;margin-bottom:12px}
+/* CHART TABS */
+.chart-tabs{display:flex;gap:4px;margin-bottom:12px}
+.chart-tab{padding:5px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;cursor:pointer;font-size:13px;color:var(--muted)}
+.chart-tab.active{background:var(--primary);color:white;border-color:var(--primary)}
+/* DISABLED */
+.disabled-notice{background:#fff8e1;border:1px solid #f0d080;border-radius:8px;padding:14px;text-align:center;font-size:13px;color:#a07a00}
+/* PASSWORD RESET */
+.pw-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)}
+.pw-row:last-child{border-bottom:none}
+/* SETTINGS */
+.settings-st{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.preview-box{background:var(--bg);border-radius:8px;padding:12px;font-size:13px;margin-top:14px}
+/* ACTIVITY STATUS */
+.act-card{background:var(--card);border:2px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;transition:border-color .3s,background .3s}
+.act-card.status-pending{border-color:#ccc;background:#fafafa}
+.act-card.status-done{border-color:#f0d080;background:#fffbe6}
+.act-card.status-checked{border-color:#2d9e6b;background:#e8f7f0}
+.act-card.status-absent{border-color:#d94f4f;background:#fdeaea}
+.act-status-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px;flex-shrink:0}
+.dot-pending{background:#ccc}
+.dot-done{background:#e8b84b}
+.dot-checked{background:#2d9e6b}
+.dot-absent{background:#d94f4f}
+.btn-clean{background:#e8b84b;color:#1a3a5c;border:none;border-radius:8px;padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-top:10px}
+.btn-clean:hover{opacity:.9}
+.btn-verify{background:#2d9e6b;color:white;border:none;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer}
+.btn-verify:hover{opacity:.9}
+.btn-absent-mark{background:#fdeaea;color:#d94f4f;border:1px solid #d94f4f;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer}
+/* ATTENDANCE */
+.att-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;margin-top:8px}
+.att-day{background:var(--bg);border-radius:6px;padding:6px;text-align:center;font-size:12px;border:1px solid var(--border)}
+.att-day.att-active{background:#e8f7f0;border-color:#2d9e6b;color:#0F6E56;font-weight:600}
+.att-day.att-absent{background:#fdeaea;border-color:#d94f4f;color:#d94f4f}
+.att-summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.att-chip{border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600}
+</style>
+</head>
+<body>
+<!-- LOGIN SCREEN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="badge" id="loginBadge">3-2반</div>
+      <h1 id="loginBankName">교실 은행</h1>
+      <p id="loginSubtitle">학생 또는 교사로 로그인하세요</p>
+    </div>
+    <div class="login-type-tabs">
+      <button class="login-type-tab active" onclick="setLoginType('student')">학생 로그인</button>
+      <button class="login-type-tab" onclick="setLoginType('teacher')">교사 로그인</button>
+    </div>
+    <div class="fl">
+      <div class="fi" id="studentSelectWrap">
+        <label>학생 선택</label>
+        <select id="loginStudentSel"></select>
+      </div>
+      <div class="fi">
+        <label>비밀번호</label>
+        <input type="password" id="loginPw" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div class="login-err" id="loginErr"></div>
+      <button class="btn-login" onclick="doLogin()">로그인</button>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <nav class="nav">
+    <div class="nav-brand" onclick="go('home')">
+      <span class="nav-badge" id="navBadge">3-2반</span>
+      <span id="navBankName">교실 은행</span>
+    </div>
+    <div class="nav-tabs" id="navTabs"></div>
+    <div class="nav-right">
+      <span class="nav-user-name" id="navUserName"></span>
+      <span class="nav-bal" id="navBal" style="display:none"></span>
+      <span id="dbStatusBadge" style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,.15);color:rgba(255,255,255,.7)">⏳ DB</span>
+      <button class="btn-logout" onclick="logout()">로그아웃</button>
+    </div>
+  </nav>
+
+  <!-- HOME -->
+  <div class="page active" id="page-home">
+    <div id="homeContent"></div>
+  </div>
+
+  <!-- BANK -->
+  <div class="page" id="page-bank">
+    <div class="tabs" id="bankTabs">
+      <button class="tab active" onclick="bankTab('transfer')">송금</button>
+      <button class="tab" onclick="bankTab('history')">거래 내역</button>
+      <button class="tab" onclick="bankTab('ranking')">랭킹</button>
+    </div>
+    <div id="bank-transfer"></div>
+    <div id="bank-history" style="display:none"></div>
+    <div id="bank-ranking" style="display:none"></div>
+  </div>
+
+  <!-- STORE -->
+  <div class="page" id="page-store">
+    <div id="storeContent"></div>
+  </div>
+
+  <!-- STOCK -->
+  <div class="page" id="page-stock">
+    <div id="stockContent"></div>
+  </div>
+
+  <!-- JOB (직업별 페이지) -->
+  <div class="page" id="page-job">
+    <div id="jobContent"></div>
+  </div>
+
+  <!-- PROFILE -->
+  <div class="page" id="page-profile">
+    <div id="profileContent"></div>
+  </div>
+
+  <!-- TEACHER -->
+  <div class="page" id="page-teacher">
+    <div class="tabs" id="teachTabs">
+      <button class="tab active" onclick="teachTab('give')">코인 지급</button>
+      <button class="tab" onclick="teachTab('students')">학생 관리</button>
+      <button class="tab" onclick="teachTab('bulk')">일괄 등록</button>
+      <button class="tab" onclick="teachTab('jobs')">직업 관리</button>
+      <button class="tab" onclick="teachTab('activity')">직업활동 상세</button>
+      <button class="tab" onclick="teachTab('shop')">상점 관리</button>
+      <button class="tab" onclick="teachTab('settings')">설정</button>
+    </div>
+    <div id="teach-give"></div>
+    <div id="teach-students" style="display:none"></div>
+    <div id="teach-bulk" style="display:none"></div>
+    <div id="teach-jobs" style="display:none"></div>
+    <div id="teach-activity" style="display:none"></div>
+    <div id="teach-shop" style="display:none"></div>
+    <div id="teach-settings" style="display:none"></div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-overlay" id="modalStock">
+  <div class="modal">
+    <div class="modal-title" id="msTitle">주식 거래</div>
+    <div id="msBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-o" onclick="closeModal('modalStock')">취소</button>
+      <button class="btn btn-d" id="msBuyBtn" onclick="doStockBuy()">매수</button>
+      <button class="btn btn-o" id="msSellBtn" onclick="doStockSell()">매도</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="modalAddStudent">
+  <div class="modal">
+    <div class="modal-title">학생 추가</div>
+    <div class="fg"><div class="fl2"><label>이름</label><input type="text" class="fi2" id="nsName" placeholder="이름"></div></div>
+    <div class="fg"><div class="fl2"><label>비밀번호</label><input type="text" class="fi2" id="nsPw" placeholder="초기 비밀번호"></div></div>
+    <div class="fg"><div class="fl2"><label>초기 잔액</label><input type="number" class="fi2" id="nsBal" value="100"></div></div>
+    <div class="modal-actions">
+      <button class="btn btn-o" onclick="closeModal('modalAddStudent')">취소</button>
+      <button class="btn btn-p" onclick="addStudent()">추가</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="modalAddItem">
+  <div class="modal">
+    <div class="modal-title">아이템 추가</div>
+    <div class="fg"><div class="fl2"><label>이름</label><input type="text" class="fi2" id="niName"></div></div>
+    <div class="fg"><div class="fl2"><label>이모지</label><input type="text" class="fi2" id="niEmoji" placeholder="🎁" maxlength="2"></div></div>
+    <div class="fg"><div class="fl2"><label>가격</label><input type="number" class="fi2" id="niPrice" value="50"></div></div>
+    <div class="fg"><div class="fl2"><label>재고</label><input type="number" class="fi2" id="niStock" value="10"></div></div>
+    <div class="fg"><div class="fl2"><label>설명</label><input type="text" class="fi2" id="niDesc"></div></div>
+    <div class="modal-actions">
+      <button class="btn btn-o" onclick="closeModal('modalAddItem')">취소</button>
+      <button class="btn btn-p" onclick="addStoreItem()">추가</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="modalAddJob">
+  <div class="modal">
+    <div class="modal-title" id="ajTitle">직업 추가/편집</div>
+    <div class="fg"><div class="fl2"><label>직업 이름</label><input type="text" class="fi2" id="ajName"></div></div>
+    <div class="fg"><div class="fl2"><label>이모지/아이콘</label><input type="text" class="fi2" id="ajEmoji" placeholder="💼" maxlength="2"></div></div>
+    <div class="fg"><div class="fl2"><label>최대 인원수</label><input type="number" class="fi2" id="ajCount" value="1" min="1"></div></div>
+    <div class="fg"><div class="fl2"><label>월급 (코인)</label><input type="number" class="fi2" id="ajSalary" value="50"></div></div>
+    <div class="fg"><div class="fl2"><label>직업 설명</label><input type="text" class="fi2" id="ajDesc" placeholder="업무 설명"></div></div>
+    <div class="fg"><div class="fl2"><label>페이지 내용 (학생에게 보일 안내)</label><textarea class="fi2" id="ajPage" rows="3" placeholder="이 직업 학생에게 보여줄 내용"></textarea></div></div>
+    <input type="hidden" id="ajId">
+    <div class="modal-actions">
+      <button class="btn btn-o" onclick="closeModal('modalAddJob')">취소</button>
+      <button class="btn btn-p" onclick="saveJob()">저장</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="modalAssignJob">
+  <div class="modal">
+    <div class="modal-title" id="ajJobTitle">직업 배정</div>
+    <div id="ajJobBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-o" onclick="closeModal('modalAssignJob')">닫기</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+// ==================== DATA ====================
+const COMPANIES=[
+  {code:'KEC',name:'한국전자',color:'#1a3a5c',sector:'전자'},
+  {code:'SKF',name:'스카이푸드',color:'#e8b84b',sector:'식품'},
+  {code:'GNB',name:'그린에너지',color:'#2d9e6b',sector:'에너지'},
+  {code:'MDC',name:'메디케어',color:'#d94f4f',sector:'의료'},
+  {code:'TRN',name:'트랜스물류',color:'#7b5ea7',sector:'물류'},
+  {code:'SNM',name:'선미패션',color:'#e07b54',sector:'패션'},
+  {code:'DGM',name:'디지털미디어',color:'#4a90d9',sector:'미디어'},
+  {code:'KHB',name:'코리아홈빌드',color:'#8b7355',sector:'건설'},
+  {code:'NXG',name:'넥스트게임',color:'#6ab04c',sector:'게임'},
+  {code:'AIB',name:'AI뱅크',color:'#2c3e50',sector:'금융'},
+];
+const NEWS_T=[
+  {type:'pos',t:'{n}, 신규 해외 계약 체결로 수출 증가 전망',i:'+2~5%'},
+  {type:'pos',t:'{n} {s} 부문 호실적...영업이익 전년비 30% 증가',i:'+1~3%'},
+  {type:'pos',t:'외국인 투자자, {n} 지분 대규모 매입',i:'+1~4%'},
+  {type:'pos',t:'{n} 신제품 출시 예정...시장 기대감 고조',i:'+0.5~2%'},
+  {type:'neg',t:'{n}, 원자재 가격 상승으로 수익성 악화 우려',i:'-1~3%'},
+  {type:'neg',t:'{n} 주요 경쟁사 신규 진입...점유율 위협',i:'-1~2%'},
+  {type:'neg',t:'{n} 대표이사 교체 예정...불확실성 확대',i:'-2~4%'},
+  {type:'neg',t:'{n} {s} 규제 강화 예상...영향 불가피',i:'-1~3%'},
+  {type:'neu',t:'{n}, 배당 정책 변화 없이 유지',i:'0%'},
+  {type:'neu',t:'{n} 2분기 실적 시장 예상치 부합',i:'±0.5%'},
+  {type:'neu',t:'{n} 본사 사옥 이전 계획 발표',i:'0%'},
+];
+
+function genNews(c){
+  const used=new Set(),news=[];
+  while(news.length<3){const i=Math.floor(Math.random()*NEWS_T.length);if(used.has(i))continue;used.add(i);const t=NEWS_T[i];news.push({type:t.type,title:t.t.replace('{n}',c.name).replace('{s}',c.sector),impact:t.i,time:`${Math.floor(Math.random()*8+8)}:${String(Math.floor(Math.random()*6)*10).padStart(2,'0')}`});}
+  return news.sort((a,b)=>a.time.localeCompare(b.time));
+}
+
+// default jobs
+const DEFAULT_JOBS=[
+  {id:1,name:'환경미화원',emoji:'🧹',maxCount:5,salary:60,desc:'교실 청소 담당',page:'매일 청소 구역을 확인하고 청결하게 유지하세요. 청소 완료 후 버튼을 눌러주세요. 환경 관리자 1이 확인합니다.'},
+  {id:2,name:'분리수거 업체',emoji:'♻️',maxCount:1,salary:70,desc:'분리수거 담당',page:'매일 분리수거함을 관리하고 올바른 분리수거가 이루어지는지 확인하세요. 완료 후 버튼을 눌러주세요. 환경 관리자 1이 확인합니다.'},
+  {id:3,name:'우체부',emoji:'📮',maxCount:2,salary:50,desc:'교실 내 우편 배달',page:'선생님이 발급하는 통장 관련 서류 및 안내문을 각 학생에게 배달하는 역할입니다.'},
+  {id:4,name:'교실 디자이너',emoji:'🎨',maxCount:1,salary:80,desc:'교실 환경 디자인',page:'교실 게시판 및 환경 꾸미기를 담당합니다. 월 1회 교실 꾸미기 계획을 제출하세요.'},
+  {id:5,name:'환경 관리자',emoji:'📋',maxCount:4,salary:75,desc:'환경 활동 검사',page:'[환경 관리자 1] 환경미화원·분리수거 업체의 청소 완료를 확인하고 승인합니다.\n[환경 관리자 2·3·4] 매일 수업 전 담당 구역 학생들의 개인 자리 정리 상태를 점검하고 기록합니다. (22명을 3명이 나눠서 담당)'},
+  {id:6,name:'마트 사장',emoji:'🏪',maxCount:1,salary:90,desc:'교실 마트 운영',page:'교실 상점을 관리합니다. 아이템 재고를 확인하고 선생님께 재고 보충을 요청할 수 있습니다.'},
+  {id:7,name:'태블릿 관리자',emoji:'📱',maxCount:1,salary:55,desc:'태블릿 기기 관리',page:'수업 시작 전 태블릿을 배포하고 수업 종료 후 수거 및 충전 여부를 확인합니다.'},
+];
+
+// generate initial stock data with monthly history
+function genStockData(){
+  const stocks={};
+  COMPANIES.forEach(c=>{
+    const base=Math.floor(Math.random()*40+10)*10;
+    // daily history: 60 days
+    const daily=[];
+    let p=base;
+    for(let i=60;i>=0;i--){p=Math.round(p*(1+(Math.random()-.48)*.04));daily.push(p);}
+    // monthly: 12 months
+    const monthly=[];
+    p=Math.round(base*.7);
+    for(let i=12;i>=0;i--){p=Math.round(p*(1+(Math.random()-.45)*.08));monthly.push(p);}
+    stocks[c.code]={price:daily[daily.length-1],daily,monthly,news:genNews(c),prevClose:daily[daily.length-2]};
+  });
+  return stocks;
+}
+
+// ==================== STATE ====================
+let cfg={
+  grade:3,classNum:2,bankName:'교실 은행',coinName:'코인',coinSymbol:'🪙',
+  teacherPw:'teacher123',
+  allowTransfer:true,allowStock:true,allowStore:true,showBalance:true,forceMarket:false,
+};
+
+// generate 22 students
+function genStudents(){
+  const names=['강하린','국민준','권나은','김금지','김정환','김채원','노강민','박소연','배민호','배수민',
+    '신정민','양세민','이누리','이수민','이승현','이정빈','임재권','정서윤','진윤우','진혜윤','허정록','황정빈'];
+  return names.map((name,i)=>({
+    id:i+1,name,pw:'1234',balance:200,
+    transactions:[],portfolio:{},items:[],earned:200,spent:0,jobId:null,
+    activityLog:{},
+    attendanceAbsent:0,
+  }));
+}
+
+let state={
+  students:genStudents(),
+  stocks:genStockData(),
+  // cleanStatus: { studentId: 'pending'|'done'|'checked'|'absent' }
+  cleanStatus:{},
+  // seatStatus: { studentId: 'unchecked'|'clean'|'messy' } — 개인자리 점검 (환경관리자2)
+  seatStatus:{},
+  // jobActivityStatus for teacher panel: { 'YYYY-MM-DD': { studentId: 'active'|'absent' } }
+  jobActivity:{},
+  storeItems:[
+    {id:1,name:'자리 이동권',emoji:'🪑',price:50,stock:5,desc:'하루 원하는 자리에 앉을 수 있어요'},
+    {id:2,name:'숙제 면제권',emoji:'📝',price:200,stock:2,desc:'숙제 1회 면제'},
+    {id:3,name:'급식 1번',emoji:'🍱',price:80,stock:10,desc:'급식 줄 맨 앞에 설 수 있어요'},
+    {id:4,name:'칭찬 스티커',emoji:'⭐',price:20,stock:30,desc:'칭찬 스티커 1장'},
+    {id:5,name:'자유시간 5분',emoji:'🎮',price:150,stock:5,desc:'자유 시간 5분 추가'},
+    {id:6,name:'간식 쿠폰',emoji:'🍪',price:120,stock:8,desc:'간식 1개 교환권'},
+  ],
+  jobs:JSON.parse(JSON.stringify(DEFAULT_JOBS)),
+  selectedStock:null,
+  chartType:'daily', // 'daily' | 'monthly'
+};
+
+// assign default jobs
+function assignDefaultJobs(){
+  const assigns=[[1,5],[2,1],[3,2],[4,1],[5,3],[6,1],[7,1]]; // [jobId, count]
+  let si=0;
+  assigns.forEach(([jobId,count])=>{
+    for(let i=0;i<count&&si<state.students.length;i++,si++){
+      state.students[si].jobId=jobId;
+    }
+  });
+}
+assignDefaultJobs();
+
+// ==================== SESSION ====================
+let session={loggedIn:false,isTeacher:false,studentId:null};
+
+function C(){return cfg.coinName;}
+function fmt(n){return n.toLocaleString()+' '+C();}
+function cur(){return state.students.find(s=>s.id===session.studentId);}
+function jobOf(s){return s.jobId?state.jobs.find(j=>j.id===s.jobId):null;}
+
+function toast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+function openModal(id){document.getElementById(id).classList.add('open');}
+function addTx(student,amount,desc){
+  student.transactions.push({amount,desc,date:new Date().toLocaleDateString('ko-KR')});
+  if(amount>0)student.earned+=amount;else student.spent+=Math.abs(amount);
+}
+
+// ==================== LOGIN ====================
+let loginType='student';
+function setLoginType(t){
+  loginType=t;
+  document.querySelectorAll('.login-type-tab').forEach((el,i)=>el.classList.toggle('active',i===(t==='student'?0:1)));
+  document.getElementById('studentSelectWrap').style.display=t==='student'?'':'none';
+  document.getElementById('loginErr').textContent='';
+}
+function populateLoginStudentSel(){
+  const sel=document.getElementById('loginStudentSel');
+  sel.innerHTML=state.students.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+}
+function doLogin(){
+  const pw=document.getElementById('loginPw').value;
+  document.getElementById('loginErr').textContent='';
+  if(loginType==='teacher'){
+    if(pw!==cfg.teacherPw){document.getElementById('loginErr').textContent='비밀번호가 올바르지 않습니다';return;}
+    session={loggedIn:true,isTeacher:true,studentId:null};
+  } else {
+    const id=parseInt(document.getElementById('loginStudentSel').value);
+    const s=state.students.find(x=>x.id===id);
+    if(!s||pw!==s.pw){document.getElementById('loginErr').textContent='비밀번호가 올바르지 않습니다';return;}
+    session={loggedIn:true,isTeacher:false,studentId:id};
+  }
+  document.getElementById('loginPw').value='';
+  startApp();
+}
+function logout(){
+  session={loggedIn:false,isTeacher:false,studentId:null};
+  document.getElementById('app').style.display='none';
+  document.getElementById('loginScreen').style.display='flex';
+  populateLoginStudentSel();
+  applyLoginInfo();
+}
+function applyLoginInfo(){
+  document.getElementById('loginBadge').textContent=`${cfg.grade}-${cfg.classNum}반`;
+  document.getElementById('loginBankName').textContent=cfg.bankName;
+}
+function startApp(){
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('app').style.display='flex';
+  buildNav();
+  go('home');
+}
+
+// ==================== NAV ====================
+function buildNav(){
+  const tabs=document.getElementById('navTabs');
+  const navBal=document.getElementById('navBal');
+  document.getElementById('navBadge').textContent=`${cfg.grade}-${cfg.classNum}반`;
+  document.getElementById('navBankName').textContent=cfg.bankName;
+  if(session.isTeacher){
+    document.getElementById('navUserName').textContent='👩‍🏫 교사';
+    navBal.style.display='none';
+    tabs.innerHTML=`
+      <button class="nav-tab active" onclick="go('home')">🏠 홈</button>
+      <button class="nav-tab" onclick="go('bank')">💳 통장</button>
+      <button class="nav-tab" onclick="go('store')">🏪 상점</button>
+      <button class="nav-tab" onclick="go('stock')">📈 주식</button>
+      <button class="nav-tab" onclick="go('teacher')">⚙ 교사</button>`;
+  } else {
+    const s=cur();
+    document.getElementById('navUserName').textContent=s.name;
+    navBal.style.display='';
+    navBal.textContent=`${s.balance.toLocaleString()} ${C()}`;
+    const job=jobOf(s);
+    let jobTab=job?`<button class="nav-tab" onclick="go('job')">💼 ${job.name}</button>`:'';
+    tabs.innerHTML=`
+      <button class="nav-tab active" onclick="go('home')">🏠 홈</button>
+      <button class="nav-tab" onclick="go('bank')">💳 통장</button>
+      <button class="nav-tab" onclick="go('store')">🏪 상점</button>
+      <button class="nav-tab" onclick="go('stock')">📈 주식</button>
+      ${jobTab}
+      <button class="nav-tab" onclick="go('profile')">👤 내 정보</button>`;
+  }
+}
+function updateNavBal(){
+  if(!session.isTeacher&&cur()){
+    document.getElementById('navBal').textContent=`${cur().balance.toLocaleString()} ${C()}`;
+  }
+}
+
+// ==================== ROUTER ====================
+function go(page){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  document.querySelectorAll('.nav-tab').forEach(t=>{if(t.getAttribute('onclick')&&t.getAttribute('onclick').includes("'"+page+"'"))t.classList.add('active');});
+  renderPage(page);
+}
+function renderPage(p){
+  if(p==='home')renderHome();
+  else if(p==='bank')renderBank();
+  else if(p==='store')renderStore();
+  else if(p==='stock')renderStock();
+  else if(p==='job')renderJob();
+  else if(p==='profile')renderProfile();
+  else if(p==='teacher')renderTeacher();
+}
+</script>
+<script>
+// ==================== HOME ====================
+function renderHome(){
+  const el=document.getElementById('homeContent');
+  if(session.isTeacher){renderTeacherHome(el);}
+  else{renderStudentHome(el);}
+}
+function renderTeacherHome(el){
+  const total=state.students.length;
+  const totalCoins=state.students.reduce((a,s)=>a+s.balance,0);
+  const sorted=[...state.students].sort((a,b)=>b.balance-a.balance);
+  el.innerHTML=`
+  <div class="grid-4" style="margin-bottom:16px">
+    <div class="stat"><div class="stat-val">${total}명</div><div class="stat-label">전체 학생</div></div>
+    <div class="stat"><div class="stat-val">${totalCoins.toLocaleString()}</div><div class="stat-label">총 유통 ${C()}</div></div>
+    <div class="stat"><div class="stat-val">${Math.round(totalCoins/total).toLocaleString()}</div><div class="stat-label">평균 잔액</div></div>
+    <div class="stat"><div class="stat-val">${sorted[0]?.balance.toLocaleString()||0}</div><div class="stat-label">최고 잔액</div></div>
+  </div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">전체 학생 잔액 현황</div>
+      <div class="scroll-y">
+        ${sorted.map((s,i)=>`
+        <div class="li">
+          <div class="ava">${s.name[0]}</div>
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:500">${s.name}</div>
+            <div style="font-size:11px;color:var(--muted)">${jobOf(s)?'💼 '+jobOf(s).name:'직업 없음'}</div>
+          </div>
+          <div style="font-weight:700;color:var(--primary)">${s.balance.toLocaleString()} ${C()}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">직업별 현황</div>
+      ${state.jobs.map(j=>{
+        const assigned=state.students.filter(s=>s.jobId===j.id);
+        return`<div class="li" style="flex-wrap:wrap">
+          <div style="font-size:18px">${j.emoji}</div>
+          <div style="flex:1"><div style="font-size:13px;font-weight:600">${j.name}</div></div>
+          <div style="font-size:12px;color:var(--muted)">${assigned.length}/${j.maxCount}명</div>
+          <div style="font-size:12px;color:var(--primary);margin-left:8px">월급 ${j.salary.toLocaleString()} ${C()}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+function renderStudentHome(el){
+  const s=cur();
+  const job=jobOf(s);
+  const portV=portVal(s);
+  const sorted=[...state.students].sort((a,b)=>(b.balance+portVal(b))-(a.balance+portVal(a)));
+  const rank=sorted.findIndex(x=>x.id===s.id)+1;
+  const today=new Date();
+  const isSalaryDay=today.getDate()===17;
+  const txs=s.transactions.slice(-5).reverse();
+  const portE=Object.entries(s.portfolio).filter(([,q])=>q>0);
+  const mySeatSt=state.seatStatus[s.id]||'unchecked';
+  const seatColor={unchecked:'var(--border)',requested:'#e8b84b',clean:'#2d9e6b',messy:'#d94f4f'};
+  const seatBg={unchecked:'var(--bg)',requested:'#fffbe6',clean:'#e8f7f0',messy:'#fdeaea'};
+  const seatIcon={unchecked:'🪑',requested:'⏳',clean:'✅',messy:'❌'};
+  const seatText={unchecked:'자리 정리 완료 후 검사 요청',requested:'환경 관리자가 검사하러 옵니다',clean:'오늘 자리 청결 확인됨',messy:'정리가 필요합니다. 정리 후 재요청하세요'};
+
+  el.innerHTML=`
+  ${isSalaryDay&&job?`<div class="salary-alert">🎉 오늘은 월급날(17일)입니다! ${job.emoji} ${job.name} 월급 ${job.salary.toLocaleString()} ${C()}이 지급될 예정입니다.</div>`:''}
+  <div style="background:white;border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:14px">
+    <div class="ava" style="width:44px;height:44px;font-size:16px">${s.name[0]}</div>
+    <div>
+      <div style="font-weight:700;font-size:17px">${s.name}</div>
+      <div style="font-size:12px;color:var(--muted)">${job?job.emoji+' '+job.name:'직업 없음'}</div>
+    </div>
+    <div style="margin-left:auto;text-align:right">
+      <div style="font-size:11px;color:var(--muted)">현재 잔액</div>
+      <div style="font-size:24px;font-weight:700;color:var(--primary)">${s.balance.toLocaleString()} ${C()}</div>
+    </div>
+  </div>
+  <div style="background:${seatBg[mySeatSt]};border:1.5px solid ${seatColor[mySeatSt]};border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
+    <div style="font-size:24px">${seatIcon[mySeatSt]}</div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:600;color:${mySeatSt==='clean'?'#2d9e6b':mySeatSt==='messy'?'#d94f4f':mySeatSt==='requested'?'#a07a00':'var(--text)'}">🪑 개인 자리 점검</div>
+      <div style="font-size:12px;color:var(--muted)">${seatText[mySeatSt]}</div>
+    </div>
+    ${mySeatSt==='unchecked'||mySeatSt==='messy'?`<button class="btn btn-a btn-sm2" onclick="requestSeatCheck(${s.id});renderHome()">검사 요청</button>`:''}
+  </div>
+  <div class="grid-4" style="margin-bottom:16px">
+    <div class="stat"><div class="stat-val">${rank}위</div><div class="stat-label">전체 순위</div></div>
+    <div class="stat"><div class="stat-val">${s.earned.toLocaleString()}</div><div class="stat-label">총 획득</div></div>
+    <div class="stat"><div class="stat-val">${s.spent.toLocaleString()}</div><div class="stat-label">총 지출</div></div>
+    <div class="stat"><div class="stat-val">${portV.toLocaleString()}</div><div class="stat-label">주식 평가액</div></div>
+  </div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">최근 거래</div>
+      ${!txs.length?'<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">거래 내역이 없습니다</div>':
+        txs.map(tx=>`<div class="tx-row">
+          <div class="tx-icon" style="background:${tx.amount>0?'#e8f7f0':'#fdeaea'}">${tx.amount>0?'📥':'📤'}</div>
+          <div class="tx-desc"><div class="tx-title2">${tx.desc}</div><div class="tx-date">${tx.date}</div></div>
+          <div style="font-size:13px;font-weight:700;color:${tx.amount>0?'var(--success)':'var(--danger)'}">${tx.amount>0?'+':''}${tx.amount.toLocaleString()}</div>
+        </div>`).join('')}
+    </div>
+    <div class="card">
+      <div class="card-title">보유 주식</div>
+      ${!portE.length?'<div style="color:var(--muted);font-size:13px">보유 주식 없음</div>':
+        portE.map(([code,qty])=>{const stk=state.stocks[code];const chg=((stk.price-stk.prevClose)/stk.prevClose*100).toFixed(1);
+          return`<div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:8px">
+            <div style="flex:1;font-size:13px;font-weight:600">${COMPANIES.find(c=>c.code===code)?.name} <span style="color:var(--muted);font-size:11px">${qty}주</span></div>
+            <div><div class="badge-sm ${chg>=0?'badge-up':'badge-down'}">${chg>=0?'+':''}${chg}%</div></div>
+          </div>`;}).join('')}
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">보유 아이템</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px">
+          ${renderMyItemsBadges(s)}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+function renderMyItemsBadges(s){
+  if(!s.items.length)return'<span style="font-size:12px;color:var(--muted)">없음</span>';
+  const g={};s.items.forEach(i=>{g[i.id]=(g[i.id]||{...i,count:0});g[i.id].count++;});
+  return Object.values(g).map(x=>`<span style="background:var(--bg);border-radius:6px;padding:3px 8px;font-size:12px">${x.emoji} ${x.name}${x.count>1?' x'+x.count:''}</span>`).join('');
+}
+function portVal(s){let v=0;Object.entries(s.portfolio).forEach(([c,q])=>{v+=(state.stocks[c]?.price||0)*q;});return v;}
+
+// ==================== BANK ====================
+function renderBank(){
+  bankTab('transfer');
+}
+function bankTab(t){
+  ['transfer','history','ranking'].forEach(x=>{document.getElementById('bank-'+x).style.display=x===t?'block':'none';});
+  document.querySelectorAll('#bankTabs .tab').forEach((el,i)=>el.classList.toggle('active',['transfer','history','ranking'][i]===t));
+  if(t==='transfer')renderBankTransfer();
+  if(t==='history')renderBankHistory();
+  if(t==='ranking')renderBankRanking();
+}
+function renderBankTransfer(){
+  const el=document.getElementById('bank-transfer');
+  const s=session.isTeacher?null:cur();
+  const pv=s?portVal(s):0;
+  if(session.isTeacher){
+    el.innerHTML=`<div class="card"><div class="card-title">교사 — 전체 잔액 현황</div>
+    <table class="tbl"><thead><tr><th>이름</th><th>잔액</th><th>주식 평가액</th><th>총 자산</th></tr></thead><tbody>
+    ${state.students.map(s=>`<tr><td>${s.name}</td><td>${s.balance.toLocaleString()} ${C()}</td><td>${portVal(s).toLocaleString()} ${C()}</td><td><b>${(s.balance+portVal(s)).toLocaleString()} ${C()}</b></td></tr>`).join('')}
+    </tbody></table></div>`;return;
+  }
+  if(!cfg.allowTransfer){
+    el.innerHTML=`<div class="disabled-notice">🔒 학생 간 송금이 비활성화되어 있습니다</div>
+    <div class="card" style="margin-top:14px"><div class="card-title">내 지갑</div>
+      <div class="grid-3">
+        <div class="stat"><div class="stat-val">${s.balance.toLocaleString()}</div><div class="stat-label">잔액 ${C()}</div></div>
+        <div class="stat"><div class="stat-val">${pv.toLocaleString()}</div><div class="stat-label">주식 평가액</div></div>
+        <div class="stat"><div class="stat-val">${(s.balance+pv).toLocaleString()}</div><div class="stat-label">총 자산</div></div>
+      </div></div>`;return;
+  }
+  const others=state.students.filter(x=>x.id!==s.id).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+  el.innerHTML=`<div class="grid-2">
+    <div class="card"><div class="card-title">${C()} 송금</div>
+      <div class="fg"><div class="fl2"><label>받는 학생</label><select class="fi2" id="txTo">${others}</select></div></div>
+      <div class="fg"><div class="fl2"><label>금액</label><input type="number" class="fi2" id="txAmt" placeholder="0" min="1"></div></div>
+      <div class="fg"><div class="fl2"><label>메모</label><input type="text" class="fi2" id="txMemo" placeholder="(선택)"></div></div>
+      <button class="btn btn-p" style="width:100%" onclick="doTransfer()">송금하기</button>
+    </div>
+    <div class="card"><div class="card-title">내 지갑</div>
+      <div class="stat" style="margin-bottom:10px"><div class="stat-val">${s.balance.toLocaleString()} ${C()}</div><div class="stat-label">잔액</div></div>
+      <div class="stat" style="margin-bottom:10px"><div class="stat-val">${pv.toLocaleString()} ${C()}</div><div class="stat-label">주식 평가액</div></div>
+      <div class="stat"><div class="stat-val">${(s.balance+pv).toLocaleString()} ${C()}</div><div class="stat-label">총 자산</div></div>
+    </div></div>`;
+}
+function doTransfer(){
+  if(!cfg.allowTransfer)return toast('송금이 비활성화되어 있습니다');
+  const s=cur();
+  const toId=parseInt(document.getElementById('txTo').value);
+  const amt=parseInt(document.getElementById('txAmt').value);
+  const memo=document.getElementById('txMemo').value||'송금';
+  if(!amt||amt<=0)return toast('금액을 입력하세요');
+  if(amt>s.balance)return toast('잔액이 부족합니다');
+  const to=state.students.find(x=>x.id===toId);
+  s.balance-=amt;to.balance+=amt;
+  addTx(s,-amt,`${to.name}에게 송금 (${memo})`);
+  addTx(to,amt,`${s.name}으로부터 (${memo})`);
+  toast(`${to.name}에게 ${fmt(amt)} 송금!`);
+  renderBankTransfer();updateNavBal();
+}
+function renderBankHistory(){
+  const s=session.isTeacher?null:cur();
+  const el=document.getElementById('bank-history');
+  if(session.isTeacher){
+    el.innerHTML=`<div class="card"><div class="card-title">교사 — 전체 거래 내역</div>
+    ${state.students.map(st=>`<details style="margin-bottom:8px"><summary style="cursor:pointer;padding:8px;font-weight:600">${st.name} (${st.transactions.length}건)</summary>
+    <div style="padding:4px 12px">
+    ${st.transactions.slice().reverse().map(tx=>`<div class="tx-row">
+      <div class="tx-icon" style="background:${tx.amount>0?'#e8f7f0':'#fdeaea'}">${tx.amount>0?'📥':'📤'}</div>
+      <div class="tx-desc"><div class="tx-title2">${tx.desc}</div><div class="tx-date">${tx.date}</div></div>
+      <div style="font-size:13px;font-weight:700;color:${tx.amount>0?'var(--success)':'var(--danger)'}">${tx.amount>0?'+':''}${tx.amount.toLocaleString()}</div>
+    </div>`).join('')||'<div style="color:var(--muted);font-size:13px;padding:8px">없음</div>'}
+    </div></details>`).join('')}</div>`;return;
+  }
+  const txs=[...s.transactions].reverse();
+  el.innerHTML=`<div class="card"><div class="card-title">거래 내역</div>
+  ${!txs.length?'<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">없음</div>':
+    txs.map(tx=>`<div class="tx-row">
+      <div class="tx-icon" style="background:${tx.amount>0?'#e8f7f0':'#fdeaea'}">${tx.amount>0?'📥':'📤'}</div>
+      <div class="tx-desc"><div class="tx-title2">${tx.desc}</div><div class="tx-date">${tx.date}</div></div>
+      <div style="font-size:13px;font-weight:700;color:${tx.amount>0?'var(--success)':'var(--danger)'}">${tx.amount>0?'+':''}${tx.amount.toLocaleString()} ${C()}</div>
+    </div>`).join('')}
+  </div>`;
+}
+function renderBankRanking(){
+  const sorted=[...state.students].sort((a,b)=>(b.balance+portVal(b))-(a.balance+portVal(a)));
+  const el=document.getElementById('bank-ranking');
+  const medals=['🥇','🥈','🥉'];
+  el.innerHTML=`<div class="card"><div class="card-title">총 자산 랭킹</div>
+  ${sorted.map((s,i)=>{
+    const total=s.balance+portVal(s);
+    const show=session.isTeacher||cfg.showBalance||(session.studentId===s.id);
+    return`<div class="li">
+      <div style="font-size:18px;width:28px">${medals[i]||''}</div>
+      <div class="ava">${s.name[0]}</div>
+      <div style="flex:1"><div style="font-size:14px;font-weight:500">${s.name}</div></div>
+      <div style="font-weight:700;color:${session.studentId===s.id?'var(--primary)':'var(--text)'}">${show?total.toLocaleString()+' '+C():'***'}</div>
+    </div>`;}).join('')}
+  </div>`;
+}
+</script>
+<script>
+// ==================== STORE ====================
+function renderStore(){
+  const el=document.getElementById('storeContent');
+  const s=session.isTeacher?null:cur();
+  const disabled=!session.isTeacher&&!cfg.allowStore;
+  if(disabled){
+    el.innerHTML=`<div class="disabled-notice">🔒 상점이 비활성화되어 있습니다</div>`;return;
+  }
+  const isMartsj=!session.isTeacher&&s&&jobOf(s)&&jobOf(s).name==='마트 사장';
+  el.innerHTML=`<div class="grid-2">
+    <div class="card">
+      <div class="sec-head">
+        <div class="sec-title">상점</div>
+        ${!session.isTeacher?`<span style="font-size:12px;color:var(--muted)">잔액: <b>${s.balance.toLocaleString()}</b> ${C()}</span>`:'<span style="font-size:12px;color:var(--muted)">교사 보기 모드</span>'}
+      </div>
+      <div class="item-grid" id="storeGrid"></div>
+    </div>
+    <div class="card">
+      ${!session.isTeacher?`<div class="card-title">내 보유 아이템</div><div id="myItemsList"></div>`:'<div class="card-title">재고 현황</div><div id="myItemsList"></div>'}
+    </div>
+  </div>`;
+  renderStoreGrid();
+  renderMyItems();
+}
+function renderStoreGrid(){
+  const el=document.getElementById('storeGrid');if(!el)return;
+  el.innerHTML=state.storeItems.map(item=>`
+    <div class="store-item" onclick="${session.isTeacher?'':('buyItem('+item.id+')')}">
+      <div style="font-size:26px;margin-bottom:7px">${item.emoji}</div>
+      <div style="font-size:13px;font-weight:600">${item.name}</div>
+      <div style="font-size:14px;font-weight:700;color:var(--primary);margin-top:3px">${item.price.toLocaleString()} ${C()}</div>
+      <div style="font-size:11px;color:var(--muted)">재고: ${item.stock}</div>
+    </div>`).join('');
+}
+function renderMyItems(){
+  const el=document.getElementById('myItemsList');if(!el)return;
+  if(session.isTeacher){
+    el.innerHTML=state.storeItems.map(item=>`
+      <div class="li">
+        <div style="font-size:20px">${item.emoji}</div>
+        <div style="flex:1"><div style="font-size:13px;font-weight:600">${item.name}</div><div style="font-size:11px;color:var(--muted)">${item.desc}</div></div>
+        <div style="font-size:12px;color:var(--muted)">재고 ${item.stock}</div>
+      </div>`).join('');return;
+  }
+  const s=cur();
+  if(!s.items.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px;text-align:center">없음</div>';return;}
+  const g={};s.items.forEach(i=>{g[i.id]=g[i.id]||{...i,count:0};g[i.id].count++;});
+  el.innerHTML=Object.values(g).map(item=>`
+    <div class="li">
+      <div style="font-size:20px">${item.emoji}</div>
+      <div style="flex:1"><div style="font-size:13px;font-weight:600">${item.name}${item.count>1?' x'+item.count:''}</div><div style="font-size:11px;color:var(--muted)">${item.desc}</div></div>
+    </div>`).join('');
+}
+function buyItem(id){
+  if(!cfg.allowStore)return toast('상점 비활성화');
+  const s=cur();const item=state.storeItems.find(x=>x.id===id);
+  if(!item||item.stock<=0)return toast('재고 없음');
+  if(s.balance<item.price)return toast('잔액 부족');
+  s.balance-=item.price;item.stock--;s.items.push({...item});
+  addTx(s,-item.price,`상점 구매: ${item.emoji} ${item.name}`);
+  toast(`${item.emoji} ${item.name} 구매!`);
+  renderStore();updateNavBal();
+}
+
+// ==================== STOCK ====================
+let stockChartInst=null;
+function renderStock(){
+  const el=document.getElementById('stockContent');
+  el.innerHTML=`
+  <div class="grid-2">
+    <div class="card" style="grid-row:span 2">
+      <div class="sec-head">
+        <div class="sec-title">주식 시장</div>
+        <div class="mkt-status"><div class="dot" id="mktDot"></div><span id="mktStatusTxt">확인 중</span></div>
+      </div>
+      <div id="stockList" style="overflow-y:auto;max-height:420px"></div>
+    </div>
+    <div class="card" id="stockDetailCard">
+      <div id="stockDetail"><div style="text-align:center;color:var(--muted);padding:40px 0;font-size:14px">종목을 선택하세요</div></div>
+    </div>
+    <div class="card"><div class="card-title">오늘의 뉴스</div><div id="stockNewsList" style="overflow-y:auto;max-height:260px"></div></div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <div class="card-title">내 포트폴리오</div>
+    <div id="stockPortfolio"></div>
+  </div>`;
+  updateMarketStatus();
+  renderStockList();
+  renderStockNews();
+  renderStockPortfolio();
+}
+function updateMarketStatus(){
+  const open=isMarketOpen();
+  const dot=document.getElementById('mktDot');
+  const txt=document.getElementById('mktStatusTxt');
+  if(!dot)return;
+  dot.className='dot '+(open?'dot-open':'dot-closed');
+  const now=new Date();
+  txt.textContent=(open?'장 운영 중':'장 마감')+' '+now.getHours()+':'+String(now.getMinutes()).padStart(2,'0');
+}
+function isMarketOpen(){
+  if(cfg.forceMarket)return true;
+  const now=new Date(),h=now.getHours(),m=now.getMinutes(),mins=h*60+m,dow=now.getDay();
+  return dow>=1&&dow<=5&&mins>=540&&mins<930;
+}
+function renderStockList(){
+  const el=document.getElementById('stockList');if(!el)return;
+  el.innerHTML=COMPANIES.map(c=>{
+    const stk=state.stocks[c.code];
+    const chg=((stk.price-stk.prevClose)/stk.prevClose*100).toFixed(2);
+    const svg=sparkSVG(stk.daily.slice(-20),chg>=0);
+    const sel=state.selectedStock===c.code;
+    return`<div class="stock-row${sel?' selected':''}" onclick="selectStock('${c.code}')">
+      <div class="slogo" style="background:${c.color}">${c.code[0]}</div>
+      <div class="sinfo"><div class="sname">${c.name}</div><div class="scode">${c.code}·${c.sector}</div></div>
+      ${svg}
+      <div class="sprice"><div class="spval ${chg>=0?'up':'dn'}">${stk.price.toLocaleString()}</div><div class="spchg ${chg>=0?'up':'dn'}">${chg>=0?'▲':'▼'}${Math.abs(chg)}%</div></div>
+    </div>`;}).join('');
+}
+function sparkSVG(data,up){
+  const w=56,h=26,min=Math.min(...data),max=Math.max(...data),range=max-min||1;
+  const pts=data.map((v,i)=>`${(i/(data.length-1)*w).toFixed(1)},${(h-(v-min)/range*h).toFixed(1)}`).join(' ');
+  return`<svg class="sparkline" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="${up?'#d94f4f':'#4a90d9'}" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+}
+function selectStock(code){
+  state.selectedStock=code;
+  renderStockList();
+  const el=document.getElementById('stockDetail');if(!el)return;
+  const c=COMPANIES.find(x=>x.code===code);
+  const stk=state.stocks[code];
+  const chg=((stk.price-stk.prevClose)/stk.prevClose*100).toFixed(2);
+  const s=session.isTeacher?null:cur();
+  const held=s?s.portfolio[code]||0:0;
+  const canTrade=cfg.allowStock&&!session.isTeacher;
+  el.innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="width:40px;height:40px;border-radius:9px;background:${c.color};display:flex;align-items:center;justify-content:center;font-weight:700;color:white;font-size:15px">${c.code[0]}</div>
+      <div><div style="font-size:15px;font-weight:700">${c.name}</div><div style="font-size:11px;color:var(--muted)">${c.code}·${c.sector}</div></div>
+    </div>
+    <div style="font-size:22px;font-weight:700;color:${chg>=0?'var(--danger)':'#4a90d9'}">${stk.price.toLocaleString()}</div>
+    <div style="font-size:13px;color:${chg>=0?'var(--danger)':'#4a90d9'};margin-bottom:8px">${chg>=0?'▲':'▼'}${Math.abs(chg)}% (전일 ${stk.prevClose.toLocaleString()})</div>
+    <div class="chart-tabs">
+      <button class="chart-tab ${state.chartType==='daily'?'active':''}" onclick="switchChartType('daily')">일별</button>
+      <button class="chart-tab ${state.chartType==='monthly'?'active':''}" onclick="switchChartType('monthly')">월별</button>
+    </div>
+    <div style="height:160px;position:relative"><canvas id="stockChart"></canvas></div>
+    ${!session.isTeacher?`<div style="font-size:13px;margin:10px 0">보유: <b>${held}주</b> (평가: ${(held*stk.price).toLocaleString()} ${C()})</div>`:''}
+    ${canTrade?`<div style="display:flex;gap:8px">
+      <button class="btn btn-d btn-sm2" style="flex:1" onclick="openTrade('buy')">매수</button>
+      <button class="btn btn-o btn-sm2" style="flex:1" onclick="openTrade('sell')">매도</button>
+    </div>`:''}`;
+  drawStockChart(code);
+}
+function switchChartType(t){
+  state.chartType=t;
+  if(state.selectedStock)selectStock(state.selectedStock);
+}
+function drawStockChart(code){
+  const canvas=document.getElementById('stockChart');if(!canvas)return;
+  if(stockChartInst){stockChartInst.destroy();stockChartInst=null;}
+  const stk=state.stocks[code];
+  const data=state.chartType==='monthly'?stk.monthly:stk.daily.slice(-30);
+  const labels=state.chartType==='monthly'?
+    data.map((_,i)=>i===0?'12개월전':i===data.length-1?'현재':(data.length-1-i)+'개월전') :
+    data.map((_,i)=>i===0?'30일전':i===data.length-1?'오늘':(data.length-1-i)+'일전');
+  const c=COMPANIES.find(x=>x.code===code);
+  stockChartInst=new Chart(canvas,{
+    type:'line',
+    data:{labels,datasets:[{data,borderColor:c.color,backgroundColor:c.color+'22',borderWidth:2,pointRadius:0,fill:true,tension:.3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:true,ticks:{font:{size:10},maxTicksLimit:4}}}}
+  });
+}
+function renderStockNews(){
+  const el=document.getElementById('stockNewsList');if(!el)return;
+  const all=[];
+  COMPANIES.forEach(c=>state.stocks[c.code].news.forEach(n=>all.push({...n,cname:c.name,code:c.code,color:c.color})));
+  all.sort((a,b)=>b.time.localeCompare(a.time));
+  el.innerHTML=all.map(n=>`<div class="news-item">
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+      <span style="background:${n.color};color:white;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:600">${n.code}</span>
+      <span style="font-size:11px;color:var(--muted)">${n.time}</span>
+    </div>
+    <div style="font-size:13px;font-weight:600">${n.title}</div>
+    <div style="font-size:11px;margin-top:2px;color:${n.type==='pos'?'var(--success)':n.type==='neg'?'var(--danger)':'var(--muted)'}">예상 영향: ${n.impact}</div>
+  </div>`).join('');
+}
+function renderStockPortfolio(){
+  const el=document.getElementById('stockPortfolio');if(!el)return;
+  if(session.isTeacher){
+    // teacher sees all portfolios
+    const rows=state.students.filter(s=>Object.values(s.portfolio).some(q=>q>0));
+    if(!rows.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;padding:14px">보유 주식 없음</div>';return;}
+    el.innerHTML=`<table class="tbl"><thead><tr><th>학생</th><th>종목</th><th>수량</th><th>현재가</th><th>평가액</th><th>등락</th></tr></thead><tbody>
+    ${rows.flatMap(s=>Object.entries(s.portfolio).filter(([,q])=>q>0).map(([code,qty])=>{
+      const stk=state.stocks[code];const val=stk.price*qty;const chg=((stk.price-stk.prevClose)/stk.prevClose*100).toFixed(2);
+      return`<tr><td>${s.name}</td><td>${COMPANIES.find(c=>c.code===code)?.name}</td><td>${qty}주</td><td>${stk.price.toLocaleString()}</td><td>${val.toLocaleString()}</td><td><span class="badge-sm ${chg>=0?'badge-up':'badge-down'}">${chg>=0?'+':''}${chg}%</span></td></tr>`;
+    })).join('')}
+    </tbody></table>`;return;
+  }
+  const s=cur();
+  const entries=Object.entries(s.portfolio).filter(([,q])=>q>0);
+  if(!entries.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;padding:14px">보유 주식 없음</div>';return;}
+  el.innerHTML=`<table class="tbl"><thead><tr><th>종목</th><th>보유</th><th>현재가</th><th>평가액</th><th>등락</th></tr></thead><tbody>
+  ${entries.map(([code,qty])=>{const c2=COMPANIES.find(x=>x.code===code);const stk=state.stocks[code];const val=stk.price*qty;const chg=((stk.price-stk.prevClose)/stk.prevClose*100).toFixed(2);
+    return`<tr><td><b>${c2.name}</b></td><td>${qty}주</td><td>${stk.price.toLocaleString()}</td><td><b>${val.toLocaleString()}</b></td><td><span class="badge-sm ${chg>=0?'badge-up':'badge-down'}">${chg>=0?'+':''}${chg}%</span></td></tr>`;}).join('')}
+  </tbody></table>`;
+}
+function openTrade(type){
+  if(!cfg.allowStock||session.isTeacher)return;
+  const code=state.selectedStock;if(!code)return;
+  const c=COMPANIES.find(x=>x.code===code);const stk=state.stocks[code];const s=cur();const held=s.portfolio[code]||0;
+  document.getElementById('msTitle').textContent=`${c.name} ${type==='buy'?'매수':'매도'}`;
+  document.getElementById('msBody').innerHTML=`<div style="margin-bottom:12px"><div style="font-size:12px;color:var(--muted)">현재가</div><div style="font-size:20px;font-weight:700">${stk.price.toLocaleString()} ${C()}</div></div>
+  <div class="fg"><div class="fl2"><label>수량 (${type==='buy'?'잔액 '+s.balance.toLocaleString():held+'주 보유'})</label>
+  <input type="number" class="fi2" id="tradeQty" value="1" min="1" max="${type==='buy'?Math.floor(s.balance/stk.price):held}"></div></div>
+  <div id="tradeCost" style="font-size:13px;color:var(--muted)">합계: ${stk.price.toLocaleString()} ${C()}</div>`;
+  document.getElementById('tradeQty').oninput=function(){document.getElementById('tradeCost').textContent=`합계: ${((parseInt(this.value)||1)*stk.price).toLocaleString()} ${C()}`;};
+  document.getElementById('msBuyBtn').style.display=type==='buy'?'':'none';
+  document.getElementById('msSellBtn').style.display=type==='sell'?'':'none';
+  openModal('modalStock');
+}
+function doStockBuy(){
+  const s=cur();const code=state.selectedStock;const stk=state.stocks[code];
+  const qty=parseInt(document.getElementById('tradeQty').value)||1;
+  const total=qty*stk.price;
+  if(total>s.balance)return toast('잔액 부족');
+  s.balance-=total;s.portfolio[code]=(s.portfolio[code]||0)+qty;
+  addTx(s,-total,`주식 매수: ${COMPANIES.find(c=>c.code===code).name} ${qty}주`);
+  toast(`${COMPANIES.find(c=>c.code===code).name} ${qty}주 매수!`);
+  closeModal('modalStock');renderStock();updateNavBal();if(state.selectedStock)selectStock(state.selectedStock);
+}
+function doStockSell(){
+  const s=cur();const code=state.selectedStock;const stk=state.stocks[code];
+  const qty=parseInt(document.getElementById('tradeQty').value)||1;
+  const held=s.portfolio[code]||0;
+  if(qty>held)return toast('수량 부족');
+  const total=qty*stk.price;
+  s.balance+=total;s.portfolio[code]=held-qty;
+  addTx(s,total,`주식 매도: ${COMPANIES.find(c=>c.code===code).name} ${qty}주`);
+  toast(`매도 완료!`);
+  closeModal('modalStock');renderStock();updateNavBal();if(state.selectedStock)selectStock(state.selectedStock);
+}
+
+// ==================== JOB PAGE ====================
+function todayKey(){return new Date().toLocaleDateString('ko-KR');}
+
+// 환경 관리자 중 몇 번째인지 반환 (1 = 청소/분리수거 담당, 2+ = 개인자리 담당)
+function getVerifierIndex(s){
+  const verifiers=state.students.filter(x=>jobOf(x)&&jobOf(x).name==='환경 관리자')
+    .sort((a,b)=>a.id-b.id);
+  const idx=verifiers.findIndex(x=>x.id===s.id);
+  return idx; // 0-based: 0=관리자1, 1이상=관리자2
+}
+
+function renderJob(){
+  if(session.isTeacher)return;
+  const s=cur(); const job=jobOf(s);
+  const el=document.getElementById('jobContent');
+  if(!job){el.innerHTML='<div class="card"><div style="text-align:center;padding:30px;color:var(--muted)">직업이 없습니다</div></div>';return;}
+  const colleagues=state.students.filter(x=>x.id!==s.id&&x.jobId===job.id);
+  const isCleanJob=(job.name==='환경미화원'||job.name==='분리수거 업체');
+  const isVerifier=(job.name==='환경 관리자');
+  const today=todayKey();
+  const myStatus=state.cleanStatus[s.id]||'pending';
+  const mySeatStatus=state.seatStatus[s.id]||'unchecked';
+  const actLog=s.activityLog||{};
+  const days=Object.keys(actLog);
+  const activeDays=days.filter(d=>actLog[d]===true).length;
+  const absentDays=s.attendanceAbsent||0;
+
+  let cleanSection='';
+
+  // ── 환경미화원 / 분리수거 업체 ──
+  if(isCleanJob){
+    const statusLabel={pending:'대기 중',done:'청소 완료 (검사 대기)',checked:'✅ 검사 완료',absent:'미완료 처리됨'};
+    const statusColor={pending:'#888',done:'#c8a000',checked:'#2d9e6b',absent:'#d94f4f'};
+    cleanSection=`
+    <div class="act-card status-${myStatus}" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span class="act-status-dot dot-${myStatus}"></span>
+        <span style="font-size:14px;font-weight:600;color:${statusColor[myStatus]}">${statusLabel[myStatus]}</span>
+        <span style="font-size:12px;color:var(--muted);margin-left:auto">오늘: ${today}</span>
+      </div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:10px">청소 완료 후 아래 버튼을 눌러주세요. <b>환경 관리자 1</b>이 확인합니다.</div>
+      ${myStatus==='pending'?`<button class="btn-clean" onclick="markCleanDone(${s.id})">🧹 청소 완료!</button>`:''}
+      ${myStatus==='done'?`<div style="background:#fffbe6;border-radius:8px;padding:12px;font-size:13px;text-align:center;color:#a07a00">⏳ 환경 관리자 1의 확인을 기다리는 중...</div>`:''}
+      ${myStatus==='checked'?`<div style="background:#e8f7f0;border-radius:8px;padding:12px;font-size:13px;text-align:center;color:#2d9e6b">👍 오늘 활동 확인 완료! 월급에 반영됩니다.</div>`:''}
+      ${myStatus==='absent'?`<div style="background:#fdeaea;border-radius:8px;padding:12px;font-size:13px;text-align:center;color:#d94f4f">❌ 오늘 미완료 처리되었습니다.</div>`:''}
+    </div>`;
+  }
+
+  // ── 환경 관리자 ──
+  if(isVerifier){
+    const vIdx=getVerifierIndex(s);
+
+    if(vIdx===0){
+      // 관리자 1: 환경미화원 + 분리수거 업체 청소 확인
+      const cleaners=state.students.filter(s2=>{
+        const j=jobOf(s2);
+        return j&&(j.name==='환경미화원'||j.name==='분리수거 업체');
+      });
+      const waiting=cleaners.filter(s2=>state.cleanStatus[s2.id]==='done');
+      const confirmed=cleaners.filter(s2=>state.cleanStatus[s2.id]==='checked');
+      const notYet=cleaners.filter(s2=>!state.cleanStatus[s2.id]||state.cleanStatus[s2.id]==='pending');
+      const absent=cleaners.filter(s2=>state.cleanStatus[s2.id]==='absent');
+
+      cleanSection=`
+      <div style="background:#e8f0fa;border-radius:8px;padding:8px 14px;margin-bottom:12px;font-size:13px;color:var(--primary);font-weight:600">
+        👷 환경 관리자 1 — 청소·분리수거 확인 담당
+      </div>
+      <div class="card" style="margin-bottom:16px;border:2px solid #e8b84b">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="card-title" style="margin-bottom:0">🔍 청소 완료 확인 대기 (${waiting.length}명)</div>
+          <div style="font-size:12px;color:var(--muted)">확인 완료: ${confirmed.length}명</div>
+        </div>
+        ${!waiting.length?`<div style="color:var(--muted);font-size:13px;padding:8px 0">${confirmed.length?'모든 청소가 확인되었습니다 ✅':'아직 청소 완료 신호가 없습니다'}</div>`:''}
+        ${waiting.map(s2=>`
+        <div class="act-card status-done" style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <div style="font-size:20px">${jobOf(s2)?.emoji||'🧹'}</div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:14px">${s2.name}</div>
+            <div style="font-size:12px;color:var(--muted)">${jobOf(s2)?.name}</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn-verify" onclick="verifyClean(${s2.id})">✅ 확인</button>
+            <button class="btn-absent-mark" onclick="markAbsentClean(${s2.id})">❌ 미완료</button>
+          </div>
+        </div>`).join('')}
+        ${notYet.length?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)">아직 완료 안 함: ${notYet.map(x=>x.name).join(', ')}</div>`:''}
+        ${absent.length?`<div style="margin-top:6px;font-size:12px;color:var(--danger)">미완료 처리: ${absent.map(x=>x.name).join(', ')}</div>`:''}
+        ${confirmed.length?`<div style="margin-top:6px;font-size:12px;color:var(--success)">확인 완료: ${confirmed.map(x=>x.name).join(', ')}</div>`:''}
+      </div>`;
+
+    } else {
+      // 관리자 2·3·4: 담당 구역 자리 점검 + 학생 요청 확인
+      const allStudents=[...state.students].sort((a,b)=>a.id-b.id);
+      const total=allStudents.length;
+      const seatVerifiers=state.students.filter(x=>jobOf(x)&&jobOf(x).name==='환경 관리자'&&getVerifierIndex(x)>=1).sort((a,b)=>a.id-b.id);
+      const numSeatVerifiers=seatVerifiers.length||1;
+      const mySlot=vIdx-1;
+      const chunkSize=Math.ceil(total/numSeatVerifiers);
+      const myStart=mySlot*chunkSize;
+      const myStudents=allStudents.slice(myStart,myStart+chunkSize);
+      const myLabel=`${myStart+1}번~${Math.min(myStart+chunkSize,total)}번 자리`;
+
+      // 내 담당 중 검사 요청한 학생
+      const requested=myStudents.filter(x=>state.seatStatus[x.id]==='requested');
+      const checkedCount=myStudents.filter(x=>state.seatStatus[x.id]==='clean'||state.seatStatus[x.id]==='messy').length;
+      const cleanCount=myStudents.filter(x=>state.seatStatus[x.id]==='clean').length;
+      const messyCount=myStudents.filter(x=>state.seatStatus[x.id]==='messy').length;
+
+      const totalClean=allStudents.filter(x=>state.seatStatus[x.id]==='clean').length;
+      const totalMessy=allStudents.filter(x=>state.seatStatus[x.id]==='messy').length;
+      const totalChecked=allStudents.filter(x=>state.seatStatus[x.id]==='clean'||state.seatStatus[x.id]==='messy').length;
+
+      cleanSection=`
+      <div style="background:#e8f7f0;border-radius:8px;padding:8px 14px;margin-bottom:12px;font-size:13px;color:#0F6E56;font-weight:600">
+        🪑 환경 관리자 ${vIdx+1} — 담당 구역: ${myLabel} (${myStudents.length}명)
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+        <div style="background:var(--bg);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:18px;font-weight:700;color:var(--primary)">${totalChecked}/${total}</div>
+          <div style="font-size:11px;color:var(--muted)">전체 점검</div>
+        </div>
+        <div style="background:#e8f7f0;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:18px;font-weight:700;color:#2d9e6b">${totalClean}</div>
+          <div style="font-size:11px;color:#2d9e6b">청결</div>
+        </div>
+        <div style="background:#fdeaea;border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:18px;font-weight:700;color:#d94f4f">${totalMessy}</div>
+          <div style="font-size:11px;color:#d94f4f">정리 필요</div>
+        </div>
+      </div>
+      ${requested.length?`
+      <div class="card" style="margin-bottom:14px;border:2px solid #e8b84b">
+        <div class="card-title" style="margin-bottom:10px">🙋 자리 검사 요청 (${requested.length}명 대기)</div>
+        ${requested.map(st=>`
+        <div class="act-card status-done" style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <div class="ava" style="width:32px;height:32px;font-size:12px">${st.name[0]}</div>
+          <div style="flex:1;font-size:14px;font-weight:600">${st.name}</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn-verify" onclick="markSeat(${st.id},'clean')">✅ 청결</button>
+            <button class="btn-absent-mark" onclick="markSeat(${st.id},'messy')">❌ 정리 필요</button>
+          </div>
+        </div>`).join('')}
+      </div>`:''}
+      <div class="card" style="margin-bottom:16px;border:2px solid #2d9e6b">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div class="card-title" style="margin-bottom:0">내 담당 구역 (${checkedCount}/${myStudents.length}명 점검)</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-s btn-sm2" onclick="markMySeats(${vIdx},'clean')">전원 ✅</button>
+            <button class="btn btn-o btn-sm2" onclick="resetMySeats(${vIdx})">초기화</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:8px">
+          ${myStudents.map(st=>{
+            const ss=state.seatStatus[st.id]||'unchecked';
+            const bgColor=ss==='clean'?'#e8f7f0':ss==='messy'?'#fdeaea':ss==='requested'?'#fffbe6':'var(--bg)';
+            const borderColor=ss==='clean'?'#2d9e6b':ss==='messy'?'#d94f4f':ss==='requested'?'#e8b84b':'var(--border)';
+            const reqBadge=ss==='requested'?'<span style="font-size:10px;background:#e8b84b;color:#1a3a5c;border-radius:4px;padding:1px 5px;margin-left:3px">요청</span>':'';
+            return`<div style="background:${bgColor};border:1.5px solid ${borderColor};border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:8px">
+              <div class="ava" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${st.name[0]}</div>
+              <div style="flex:1;font-size:12px;font-weight:600;line-height:1.3">${st.name}${reqBadge}</div>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <button onclick="markSeat(${st.id},'clean')" style="background:${ss==='clean'?'#2d9e6b':'transparent'};color:${ss==='clean'?'white':'#2d9e6b'};border:1px solid #2d9e6b;border-radius:4px;padding:2px 6px;font-size:11px;cursor:pointer">✅</button>
+                <button onclick="markSeat(${st.id},'messy')" style="background:${ss==='messy'?'#d94f4f':'transparent'};color:${ss==='messy'?'white':'#d94f4f'};border:1px solid #d94f4f;border-radius:4px;padding:2px 6px;font-size:11px;cursor:pointer">❌</button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }
+  }
+
+  // ── 모든 학생: 자리 정리 완료 요청 버튼 ──
+  // (환경 관리자 자신 & 환경미화원·분리수거는 별도 섹션 있으므로 추가 안내만)
+  let seatSection='';
+  if(!isVerifier){
+    const seatLabel={unchecked:'미점검',requested:'검사 요청 중',clean:'✅ 청결 확인됨',messy:'❌ 정리 필요'};
+    const seatColor={unchecked:'#888',requested:'#c8a000',clean:'#2d9e6b',messy:'#d94f4f'};
+    const seatBg={unchecked:'var(--bg)',requested:'#fffbe6',clean:'#e8f7f0',messy:'#fdeaea'};
+    seatSection=`
+    <div class="card" style="margin-bottom:16px;border:1.5px solid ${mySeatStatus==='requested'?'#e8b84b':mySeatStatus==='clean'?'#2d9e6b':mySeatStatus==='messy'?'#d94f4f':'var(--border)'}">
+      <div class="card-title">🪑 개인 자리 정리 점검</div>
+      <div style="background:${seatBg[mySeatStatus]};border-radius:8px;padding:12px;display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <div style="font-size:22px">${mySeatStatus==='clean'?'✅':mySeatStatus==='messy'?'❌':mySeatStatus==='requested'?'⏳':'🪑'}</div>
+        <div>
+          <div style="font-size:14px;font-weight:600;color:${seatColor[mySeatStatus]}">${seatLabel[mySeatStatus]}</div>
+          <div style="font-size:12px;color:var(--muted)">환경 관리자 2·3·4가 담당 구역을 점검합니다</div>
+        </div>
+      </div>
+      ${mySeatStatus==='unchecked'||mySeatStatus==='messy'?`
+        <button class="btn-clean" style="background:#1a3a5c" onclick="requestSeatCheck(${s.id})">🙋 자리 정리 완료 — 검사 요청</button>
+      `:''}
+      ${mySeatStatus==='requested'?`<div style="background:#fffbe6;border-radius:8px;padding:10px;font-size:13px;text-align:center;color:#a07a00">⏳ 환경 관리자가 검사하러 오고 있어요...</div>`:''}
+      ${mySeatStatus==='clean'?`<div style="background:#e8f7f0;border-radius:8px;padding:10px;font-size:13px;text-align:center;color:#2d9e6b">👍 오늘 자리 청결 확인 완료!</div>`:''}
+      ${mySeatStatus==='messy'?`<div style="background:#fdeaea;border-radius:8px;padding:10px;font-size:13px;text-align:center;color:#d94f4f;margin-bottom:8px">정리가 필요합니다. 정리 후 다시 요청하세요.</div>`:''}
+    </div>`;
+  }
+
+  // 출석 현황
+  const attSection=`
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">📅 이번 달 활동 현황</div>
+    <div class="att-summary">
+      <span class="att-chip" style="background:#e8f7f0;color:#0F6E56">활동일 ${activeDays}일</span>
+      <span class="att-chip" style="background:#fdeaea;color:#d94f4f">결근 ${absentDays}일</span>
+      <span class="att-chip" style="background:#e8f0fa;color:var(--primary)">예상 월급 ${calcExpectedSalary(s)}${C()}</span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">최근 활동 기록</div>
+    <div class="att-grid">
+      ${days.slice(-10).map(d=>`<div class="att-day ${actLog[d]?'att-active':'att-absent'}">${d.split('.').slice(1).join('/')} ${actLog[d]?'✓':'✗'}</div>`).join('')}
+      ${!days.length?'<div style="font-size:12px;color:var(--muted)">아직 기록 없음</div>':''}
+    </div>
+  </div>`;
+
+  el.innerHTML=`
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <div style="font-size:36px">${job.emoji}</div>
+      <div>
+        <div style="font-size:20px;font-weight:700">${job.name}
+          ${isVerifier?`<span style="font-size:13px;font-weight:600;background:${getVerifierIndex(s)===0?'#e8f0fa':'#e8f7f0'};color:${getVerifierIndex(s)===0?'var(--primary)':'#0F6E56'};border-radius:6px;padding:2px 10px;margin-left:6px">${getVerifierIndex(s)===0?'1번':(getVerifierIndex(s)+1)+'번'}</span>`:''}
+        </div>
+        <div style="font-size:13px;color:var(--muted)">월급: ${job.salary.toLocaleString()} ${C()} / 매월 17일 지급</div>
+      </div>
+    </div>
+    <div class="profile-section" style="white-space:pre-line;line-height:1.7;font-size:14px">${job.page||job.desc}</div>
+  </div>
+  ${cleanSection}
+  ${seatSection}
+  ${attSection}
+  ${colleagues.length?`<div class="card">
+    <div class="card-title">같은 직업 동료 (${colleagues.length}명)</div>
+    ${colleagues.map(c=>`<div class="li"><div class="ava">${c.name[0]}</div>
+      <div style="flex:1;font-size:14px">${c.name}
+        ${jobOf(c)?.name==='환경 관리자'?`<span style="font-size:11px;background:var(--bg);border-radius:4px;padding:1px 6px;margin-left:4px">${getVerifierIndex(c)===0?'1번':(getVerifierIndex(c)+1)+'번'}</span>`:''}
+      </div></div>`).join('')}
+  </div>`:''}`;
+}
+
+
+function calcExpectedSalary(s){
+  const job=jobOf(s);if(!job)return 0;
+  const absent=s.attendanceAbsent||0;
+  const deductRate=absent>=3?0.5:absent>=1?(absent*0.1):0;
+  return Math.round(job.salary*(1-deductRate));
+}
+function markCleanDone(studentId){
+  state.cleanStatus[studentId]='done';
+  const s=state.students.find(x=>x.id===studentId);
+  toast(`${s.name} 청소 완료! 환경 관리자 1의 확인을 기다립니다.`);
+  renderJob();
+}
+function verifyClean(studentId){
+  state.cleanStatus[studentId]='checked';
+  const s=state.students.find(x=>x.id===studentId);
+  const today=todayKey();
+  if(!s.activityLog)s.activityLog={};
+  s.activityLog[today]=true;
+  toast(`✅ ${s.name} 청소 확인 완료!`);
+  renderJob();
+}
+function markAbsentClean(studentId){
+  state.cleanStatus[studentId]='absent';
+  const s=state.students.find(x=>x.id===studentId);
+  const today=todayKey();
+  if(!s.activityLog)s.activityLog={};
+  s.activityLog[today]=false;
+  s.attendanceAbsent=(s.attendanceAbsent||0)+1;
+  toast(`${s.name} 미완료 처리됨.`);
+  renderJob();
+}
+function markSeat(studentId, status){
+  state.seatStatus[studentId]=status;
+  const s=state.students.find(x=>x.id===studentId);
+  toast(`${s.name} 자리: ${status==='clean'?'✅ 청결':'❌ 정리 필요'}`);
+  dbSaveSeatStatus(studentId, status);
+  renderJob();
+}
+function requestSeatCheck(studentId){
+  state.seatStatus[studentId]='requested';
+  const s=state.students.find(x=>x.id===studentId);
+  toast(`${s.name} 자리 검사 요청! 환경 관리자가 확인합니다.`);
+  dbSaveSeatStatus(studentId, 'requested');
+  renderJob();
+}
+function markAllSeats(status){
+  state.students.forEach(s=>{
+    state.seatStatus[s.id]=status;
+    dbSaveSeatStatus(s.id, status);
+  });
+  toast(`전원 ${status==='clean'?'✅ 청결':'❌ 정리 필요'} 처리`);
+  renderJob();
+}
+function markMySeats(vIdx, status){
+  // 내 담당 구역만 처리
+  const allStudents=[...state.students].sort((a,b)=>a.id-b.id);
+  const seatVerifiers=state.students.filter(x=>jobOf(x)&&jobOf(x).name==='환경 관리자'&&getVerifierIndex(x)>=1);
+  const numSeatVerifiers=seatVerifiers.length||1;
+  const mySlot=vIdx-1;
+  const chunkSize=Math.ceil(allStudents.length/numSeatVerifiers);
+  const myStudents=allStudents.slice(mySlot*chunkSize, mySlot*chunkSize+chunkSize);
+  myStudents.forEach(s=>{ state.seatStatus[s.id]=status; dbSaveSeatStatus(s.id,status); });
+  toast(`담당 구역 전원 ${status==='clean'?'✅ 청결':'❌ 정리 필요'} 처리`);
+  renderJob();
+}
+function resetMySeats(vIdx){
+  const allStudents=[...state.students].sort((a,b)=>a.id-b.id);
+  const seatVerifiers=state.students.filter(x=>jobOf(x)&&jobOf(x).name==='환경 관리자'&&getVerifierIndex(x)>=1);
+  const numSeatVerifiers=seatVerifiers.length||1;
+  const mySlot=vIdx-1;
+  const chunkSize=Math.ceil(allStudents.length/numSeatVerifiers);
+  const myStudents=allStudents.slice(mySlot*chunkSize, mySlot*chunkSize+chunkSize);
+  myStudents.forEach(s=>{ state.seatStatus[s.id]='unchecked'; });
+  if(isDbReady()) myStudents.forEach(s=>sb.from('seat_status').delete().eq('student_id',s.id));
+  toast('담당 구역 초기화');
+  renderJob();
+}
+function resetAllSeats(){
+  state.students.forEach(s=>{ state.seatStatus[s.id]='unchecked'; });
+  if(isDbReady()) sb.from('seat_status').delete().neq('student_id',0);
+  toast('자리 점검 초기화');
+  renderJob();
+}
+
+// ==================== TEACHER ACTIVITY PAGE ====================
+function renderTeachActivity(){
+  const el=document.getElementById('teach-activity');
+  const today=todayKey();
+  // init daily activity if not set
+  if(!state.jobActivity[today]) state.jobActivity[today]={};
+  const todayAct=state.jobActivity[today];
+
+  el.innerHTML=`
+  <div class="sec-head" style="margin-bottom:16px">
+    <div class="sec-title">직업활동 상세</div>
+    <div style="font-size:13px;color:var(--muted)">오늘: ${today}</div>
+  </div>
+  ${state.jobs.map(job=>{
+    const assigned=state.students.filter(s=>s.jobId===job.id);
+    if(!assigned.length)return'';
+    return`<div class="card" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:22px">${job.emoji}</span>
+        <div>
+          <div style="font-size:15px;font-weight:700">${job.name}</div>
+          <div style="font-size:12px;color:var(--muted)">월급 ${job.salary}${C()} · ${assigned.length}명</div>
+        </div>
+        <button class="btn btn-p btn-sm2" style="margin-left:auto" onclick="markAllActive(${job.id})">전원 출석</button>
+        <button class="btn btn-d btn-sm2" style="margin-left:4px" onclick="markAllAbsent(${job.id})">전원 결근</button>
+      </div>
+      ${assigned.map(s=>{
+        const stat=todayAct[s.id]||'none';
+        const isClean=(job.name==='환경미화원'||job.name==='분리수거 업체');
+        const cleanStat=state.cleanStatus[s.id]||'pending';
+        const absentCount=s.attendanceAbsent||0;
+        const expSalary=calcExpectedSalary(s);
+        return`<div class="act-card status-${stat==='active'?'checked':stat==='absent'?'absent':'pending'}" style="display:flex;align-items:center;gap:10px;padding:10px 14px">
+          <div class="ava" style="width:32px;height:32px;font-size:12px">${s.name[0]}</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600">${s.name}</div>
+            <div style="font-size:11px;color:var(--muted)">
+              결근 ${absentCount}회 · 예상 월급 ${expSalary}${C()}
+              ${isClean?` · 청소: <b style="color:${cleanStat==='checked'?'#2d9e6b':cleanStat==='done'?'#c8a000':cleanStat==='absent'?'#d94f4f':'#888'}">${{pending:'대기',done:'완료(미확인)',checked:'확인됨',absent:'미완료'}[cleanStat]}</b>`:''}
+            </div>
+          </div>
+          <div style="display:flex;gap:5px">
+            <button class="btn btn-s btn-sm2" onclick="teachMarkActivity(${s.id},'active')" ${stat==='active'?'style="opacity:.5"':''}>✓출석</button>
+            <button class="btn btn-d btn-sm2" onclick="teachMarkActivity(${s.id},'absent')" ${stat==='absent'?'style="opacity:.5"':''}>✗결근</button>
+          </div>
+        </div>`;}).join('')}
+    </div>`;
+  }).join('')}
+  <div class="card" style="margin-top:4px">
+    <div class="card-title">📊 이번 달 출석 요약</div>
+    <table class="tbl">
+      <thead><tr><th>이름</th><th>직업</th><th>결근 횟수</th><th>예상 월급</th><th>차감액</th></tr></thead>
+      <tbody>
+      ${state.students.filter(s=>s.jobId).map(s=>{
+        const job=jobOf(s);
+        const absent=s.attendanceAbsent||0;
+        const expSal=calcExpectedSalary(s);
+        const deducted=job.salary-expSal;
+        return`<tr>
+          <td><b>${s.name}</b></td>
+          <td>${job.emoji} ${job.name}</td>
+          <td><span style="color:${absent>0?'var(--danger)':'var(--success)'};font-weight:600">${absent}회</span></td>
+          <td style="font-weight:600;color:var(--primary)">${expSal}${C()}</td>
+          <td style="color:${deducted>0?'var(--danger)':'var(--muted)'};">${deducted>0?'-'+deducted:'없음'}</td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+function teachMarkActivity(studentId, status){
+  const today=todayKey();
+  if(!state.jobActivity[today]) state.jobActivity[today]={};
+  const s=state.students.find(x=>x.id===studentId);
+  const prev=state.jobActivity[today][studentId];
+  // Undo previous absent count if changing
+  if(prev==='absent'&&status==='active'){
+    s.attendanceAbsent=Math.max(0,(s.attendanceAbsent||0)-1);
+    if(s.activityLog) s.activityLog[today]=true;
+  } else if(status==='absent'&&prev!=='absent'){
+    s.attendanceAbsent=(s.attendanceAbsent||0)+1;
+    if(!s.activityLog)s.activityLog={};
+    s.activityLog[today]=false;
+  } else if(status==='active'){
+    if(!s.activityLog)s.activityLog={};
+    s.activityLog[today]=true;
+  }
+  state.jobActivity[today][studentId]=status;
+  toast(`${s.name} ${status==='active'?'출석':'결근'} 처리`);
+  renderTeachActivity();
+}
+function markAllActive(jobId){
+  const assigned=state.students.filter(s=>s.jobId===jobId);
+  assigned.forEach(s=>teachMarkActivity(s.id,'active'));
+}
+function markAllAbsent(jobId){
+  const assigned=state.students.filter(s=>s.jobId===jobId);
+  assigned.forEach(s=>teachMarkActivity(s.id,'absent'));
+}
+
+// ==================== PROFILE ====================
+function renderProfile(){
+  if(session.isTeacher)return;
+  const s=cur();
+  const el=document.getElementById('profileContent');
+  el.innerHTML=`
+  <div class="card">
+    <div class="card-title">내 정보</div>
+    <div class="profile-section">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div class="ava" style="width:50px;height:50px;font-size:18px">${s.name[0]}</div>
+        <div><div style="font-size:18px;font-weight:700">${s.name}</div><div style="font-size:13px;color:var(--muted)">${jobOf(s)?jobOf(s).emoji+' '+jobOf(s).name:'직업 없음'}</div></div>
+      </div>
+    </div>
+    <div class="card-title" style="margin-top:18px">비밀번호 변경</div>
+    <div class="fg"><div class="fl2"><label>현재 비밀번호</label><input type="password" class="fi2" id="pwOld" placeholder="현재 비밀번호"></div></div>
+    <div class="fg"><div class="fl2"><label>새 비밀번호</label><input type="password" class="fi2" id="pwNew" placeholder="새 비밀번호"></div></div>
+    <div class="fg"><div class="fl2"><label>새 비밀번호 확인</label><input type="password" class="fi2" id="pwNew2" placeholder="확인"></div></div>
+    <button class="btn btn-p" onclick="changePw()">변경하기</button>
+  </div>`;
+}
+function changePw(){
+  const s=cur();
+  const old=document.getElementById('pwOld').value;
+  const nw=document.getElementById('pwNew').value;
+  const nw2=document.getElementById('pwNew2').value;
+  if(old!==s.pw)return toast('현재 비밀번호가 틀립니다');
+  if(!nw)return toast('새 비밀번호를 입력하세요');
+  if(nw!==nw2)return toast('비밀번호가 일치하지 않습니다');
+  s.pw=nw;
+  toast('비밀번호가 변경되었습니다');
+  document.getElementById('pwOld').value='';
+  document.getElementById('pwNew').value='';
+  document.getElementById('pwNew2').value='';
+}
+</script>
+<script>
+// ==================== TEACHER ====================
+function renderTeacher(){
+  if(!session.isTeacher)return;
+  teachTab('give');
+}
+function teachTab(t){
+  ['give','students','bulk','jobs','activity','shop','settings'].forEach(x=>{document.getElementById('teach-'+x).style.display=x===t?'block':'none';});
+  document.querySelectorAll('#teachTabs .tab').forEach((el,i)=>el.classList.toggle('active',['give','students','bulk','jobs','activity','shop','settings'][i]===t));
+  if(t==='give')renderTeachGive();
+  if(t==='students')renderTeachStudents();
+  if(t==='bulk')renderTeachBulk();
+  if(t==='jobs')renderTeachJobs();
+  if(t==='activity')renderTeachActivity();
+  if(t==='shop')renderTeachShop();
+  if(t==='settings')renderTeachSettings();
+}
+
+// ==================== BULK REGISTER ====================
+function renderTeachBulk(){
+  const el=document.getElementById('teach-bulk');
+  el.innerHTML=`
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">📋 학생 일괄 등록</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.7">
+        한 줄에 한 명씩 입력하세요.<br>
+        형식: <code style="background:var(--bg);padding:1px 6px;border-radius:4px">번호 이름</code> 또는 <code style="background:var(--bg);padding:1px 6px;border-radius:4px">이름</code> 만 입력해도 됩니다.<br>
+        비밀번호는 모두 <b>1234</b>로 설정됩니다.
+      </div>
+      <div class="fg"><div class="fl2">
+        <label>초기 잔액 (모두 동일)</label>
+        <input type="number" class="fi2" id="bulkBal" value="200" min="0">
+      </div></div>
+      <div class="fg"><div class="fl2">
+        <label>학생 목록 붙여넣기</label>
+        <textarea class="fi2" id="bulkText" rows="12" placeholder="1 강하린&#10;2 국민준&#10;3 권나은&#10;..."></textarea>
+      </div></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-p" style="flex:1" onclick="previewBulk()">👁 미리보기</button>
+        <button class="btn btn-s" style="flex:1" onclick="confirmBulk()">✅ 등록 실행</button>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--danger)" id="bulkErr"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">👁 미리보기</div>
+      <div id="bulkPreview" style="color:var(--muted);font-size:13px;text-align:center;padding:30px 0">
+        왼쪽에 이름을 입력하고 미리보기를 눌러주세요
+      </div>
+    </div>
+  </div>`;
+}
+
+function parseBulkText(text){
+  return text.split('\n')
+    .map(l=>l.trim())
+    .filter(l=>l.length>0)
+    .map(l=>{
+      // "1 강하린" 또는 "1. 강하린" 또는 "강하린" 형식 모두 처리
+      const m=l.match(/^(\d+)[.\s]+(.+)$/);
+      return m ? {num:parseInt(m[1]), name:m[2].trim()} : {num:null, name:l.trim()};
+    })
+    .filter(x=>x.name.length>0);
+}
+
+function previewBulk(){
+  const text=document.getElementById('bulkText').value;
+  const bal=parseInt(document.getElementById('bulkBal').value)||200;
+  const parsed=parseBulkText(text);
+  const el=document.getElementById('bulkPreview');
+  const err=document.getElementById('bulkErr');
+  err.textContent='';
+  if(!parsed.length){el.innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">입력된 내용이 없습니다</div>';return;}
+  el.innerHTML=`
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${parsed.length}명 인식됨 · 초기 잔액 ${bal.toLocaleString()} 코인 · 비밀번호 1234</div>
+    <div style="max-height:380px;overflow-y:auto">
+      <table class="tbl">
+        <thead><tr><th>번호</th><th>이름</th><th>초기잔액</th><th>비밀번호</th></tr></thead>
+        <tbody>
+          ${parsed.map((s,i)=>`<tr>
+            <td style="color:var(--muted)">${s.num||i+1}</td>
+            <td><b>${s.name}</b></td>
+            <td>${bal.toLocaleString()}</td>
+            <td><code style="background:var(--bg);padding:1px 5px;border-radius:4px">1234</code></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:12px;background:#fffbe6;border:1px solid #f0d080;border-radius:8px;padding:10px;font-size:12px;color:#a07a00">
+      ⚠️ 등록 실행 시 기존 학생 데이터가 <b>모두 삭제</b>되고 새로 등록됩니다.
+    </div>`;
+}
+
+async function confirmBulk(){
+  const text=document.getElementById('bulkText').value;
+  const bal=parseInt(document.getElementById('bulkBal').value)||200;
+  const parsed=parseBulkText(text);
+  const err=document.getElementById('bulkErr');
+  if(!parsed.length){err.textContent='학생 목록을 입력해주세요';return;}
+  if(!confirm(`${parsed.length}명을 등록합니다. 기존 학생 데이터가 모두 삭제됩니다. 계속하시겠습니까?`))return;
+
+  // 로컬 state 교체
+  state.students=parsed.map((s,i)=>({
+    id:i+1,
+    name:s.name,
+    pw:'1234',
+    balance:bal,
+    transactions:[],
+    portfolio:{},
+    items:[],
+    earned:bal,
+    spent:0,
+    jobId:null,
+    activityLog:{},
+    attendanceAbsent:0,
+  }));
+  state.cleanStatus={};
+  state.seatStatus={};
+
+  // DB 저장
+  if(isDbReady()){
+    toast('DB에 저장 중...');
+    // 기존 학생 전체 삭제
+    await sb.from('clean_status').delete().neq('student_id',0);
+    await sb.from('seat_status').delete().neq('student_id',0);
+    await sb.from('students').delete().neq('id',0);
+    // 새 학생 일괄 삽입
+    const rows=state.students.map(s=>({
+      id:s.id,name:s.name,pw:s.pw,balance:s.balance,
+      transactions:[],portfolio:{},items:[],
+      earned:s.balance,spent:0,job_id:null,
+      activity_log:{},attendance_absent:0,
+    }));
+    const {error}=await sb.from('students').insert(rows);
+    if(error){err.textContent='DB 오류: '+error.message;return;}
+  }
+
+  populateLoginStudentSel();
+  toast(`✅ ${parsed.length}명 등록 완료!`);
+  err.textContent='';
+  // 미리보기 업데이트
+  document.getElementById('bulkPreview').innerHTML=`
+    <div style="background:#e8f7f0;border-radius:8px;padding:16px;text-align:center;color:#2d9e6b;font-weight:600;font-size:14px">
+      ✅ ${parsed.length}명 등록 완료!<br>
+      <span style="font-size:12px;font-weight:400;margin-top:4px;display:block">학생 관리 탭에서 확인하세요</span>
+    </div>`;
+}
+
+// ==================== TEACHER GIVE ====================
+function renderTeachGive(){
+  document.getElementById('teach-give').innerHTML=`
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">개별 지급/차감</div>
+      <div class="fg"><div class="fl2"><label>학생</label><select class="fi2" id="tcSel">${state.students.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select></div></div>
+      <div class="fg"><div class="fl2"><label>금액</label><input type="number" class="fi2" id="tcAmt" placeholder="0" min="1"></div></div>
+      <div class="fg"><div class="fl2"><label>사유</label><input type="text" class="fi2" id="tcReason" placeholder="예: 숙제 제출, 발표 우수"></div></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-s" style="flex:1" onclick="teachGive(1)">지급</button>
+        <button class="btn btn-d" style="flex:1" onclick="teachGive(-1)">차감</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">전체 지급</div>
+      <div class="fg"><div class="fl2"><label>금액</label><input type="number" class="fi2" id="tcAllAmt" placeholder="0"></div></div>
+      <div class="fg"><div class="fl2"><label>사유</label><input type="text" class="fi2" id="tcAllReason" placeholder="예: 청소 완료"></div></div>
+      <button class="btn btn-a" style="width:100%" onclick="teachGiveAll()">전체 학생 지급</button>
+      <div style="margin-top:12px">
+        <button class="btn btn-p" style="width:100%" onclick="paySalaries()">💰 월급 지급 (17일 실행)</button>
+      </div>
+    </div>
+  </div>`;
+}
+function teachGive(sign){
+  const id=parseInt(document.getElementById('tcSel').value);
+  const amt=parseInt(document.getElementById('tcAmt').value);
+  const reason=document.getElementById('tcReason').value||(sign>0?'교사 지급':'교사 차감');
+  if(!amt||amt<=0)return toast('금액 입력');
+  const s=state.students.find(x=>x.id===id);
+  if(sign<0&&s.balance<amt)return toast('잔액 부족');
+  s.balance+=sign*amt;
+  addTx(s,sign*amt,`교사: ${reason}`);
+  toast(`${s.name} ${Math.abs(sign*amt).toLocaleString()} ${C()} ${sign>0?'지급':'차감'}`);
+}
+function teachGiveAll(){
+  const amt=parseInt(document.getElementById('tcAllAmt').value);
+  const reason=document.getElementById('tcAllReason').value||'전체 보상';
+  if(!amt||amt<=0)return toast('금액 입력');
+  state.students.forEach(s=>{s.balance+=amt;addTx(s,amt,`교사(전체): ${reason}`);});
+  toast(`전체 ${state.students.length}명에게 ${amt.toLocaleString()} ${C()} 지급`);
+}
+function paySalaries(){
+  let count=0;
+  const today=new Date().toLocaleDateString('ko-KR');
+  state.students.forEach(s=>{
+    const job=jobOf(s);
+    if(job){
+      // Count absent days this month
+      const absent=s.attendanceAbsent||0;
+      const deductRate=absent>=3?0.5:absent>=1?(absent*0.1):0; // 10% per absent day, max 50%
+      const actualSalary=Math.round(job.salary*(1-deductRate));
+      const deducted=job.salary-actualSalary;
+      s.balance+=actualSalary;
+      let txDesc=`월급: ${job.emoji}${job.name} (${job.salary}${C()})`;
+      if(deducted>0) txDesc+=` ※결근${absent}일 -${deducted}${C()} 차감`;
+      addTx(s,actualSalary,txDesc);
+      // Reset monthly attendance counter
+      s.attendanceAbsent=0;
+      count++;
+    }
+  });
+  toast(`💰 ${count}명에게 월급 지급 완료! (결근 차감 적용)`);
+  if(document.getElementById('teach-activity').style.display!=='none') renderTeachActivity();
+}
+
+function renderTeachStudents(){
+  const el=document.getElementById('teach-students');
+  el.innerHTML=`
+  <div class="card">
+    <div class="sec-head"><div class="sec-title">학생 목록 (${state.students.length}명)</div><button class="btn btn-p btn-sm2" onclick="openModal('modalAddStudent')">+ 학생 추가</button></div>
+    <table class="tbl">
+      <thead><tr><th>이름</th><th>비밀번호</th><th>잔액</th><th>직업</th><th>관리</th></tr></thead>
+      <tbody>
+      ${state.students.map(s=>`<tr>
+        <td><b>${s.name}</b></td>
+        <td><code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:13px">${s.pw}</code></td>
+        <td>${s.balance.toLocaleString()} ${C()}</td>
+        <td>${jobOf(s)?jobOf(s).emoji+' '+jobOf(s).name:'없음'}</td>
+        <td style="display:flex;gap:4px">
+          <button class="btn btn-o btn-sm2" onclick="editStudentPw(${s.id})">비번</button>
+          <button class="btn btn-d btn-sm2" onclick="removeStudent(${s.id})">삭제</button>
+        </td>
+      </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+function editStudentPw(id){
+  const s=state.students.find(x=>x.id===id);
+  const nw=prompt(`${s.name}의 새 비밀번호:`);
+  if(nw===null)return;
+  if(!nw){toast('비밀번호를 입력하세요');return;}
+  s.pw=nw;
+  toast(`${s.name} 비밀번호 변경됨`);
+  renderTeachStudents();
+}
+function removeStudent(id){
+  if(!confirm('정말 삭제하시겠습니까?'))return;
+  state.students=state.students.filter(x=>x.id!==id);
+  toast('학생 삭제됨');
+  renderTeachStudents();
+  populateLoginStudentSel();
+}
+function addStudent(){
+  const name=document.getElementById('nsName').value.trim();
+  const pw=document.getElementById('nsPw').value||'1234';
+  const bal=parseInt(document.getElementById('nsBal').value)||100;
+  if(!name)return toast('이름 입력');
+  const id=Math.max(0,...state.students.map(s=>s.id))+1;
+  state.students.push({id,name,pw,balance:bal,transactions:[],portfolio:{},items:[],earned:bal,spent:0,jobId:null});
+  toast(`${name} 추가됨`);
+  closeModal('modalAddStudent');
+  document.getElementById('nsName').value='';
+  renderTeachStudents();
+  populateLoginStudentSel();
+}
+
+// ==================== JOBS ====================
+function renderTeachJobs(){
+  const el=document.getElementById('teach-jobs');
+  el.innerHTML=`
+  <div class="sec-head"><div class="sec-title">직업 관리</div><button class="btn btn-p btn-sm2" onclick="openAddJob()">+ 직업 추가</button></div>
+  ${state.jobs.map(job=>{
+    const assigned=state.students.filter(s=>s.jobId===job.id);
+    return`<div class="job-card">
+      <div class="job-header">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:26px">${job.emoji}</div>
+          <div><div class="job-name">${job.name}</div><div style="font-size:12px;color:var(--muted)">${job.desc}</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="job-badge">${assigned.length}/${job.maxCount}명</span>
+          <span style="font-size:12px;color:var(--primary);font-weight:600">월 ${job.salary.toLocaleString()} ${C()}</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+        ${assigned.map(s=>`<span style="background:var(--bg);border-radius:6px;padding:3px 9px;font-size:12px">${s.name}</span>`).join('')}
+        ${assigned.length===0?'<span style="font-size:12px;color:var(--muted)">배정된 학생 없음</span>':''}
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-p btn-sm2" onclick="openAssignJob(${job.id})">학생 배정</button>
+        <button class="btn btn-o btn-sm2" onclick="openEditJob(${job.id})">편집</button>
+        <button class="btn btn-d btn-sm2" onclick="deleteJob(${job.id})">삭제</button>
+      </div>
+    </div>`;}).join('')}`;
+}
+function openAddJob(){
+  document.getElementById('ajTitle').textContent='직업 추가';
+  document.getElementById('ajId').value='';
+  document.getElementById('ajName').value='';
+  document.getElementById('ajEmoji').value='';
+  document.getElementById('ajCount').value='1';
+  document.getElementById('ajSalary').value='50';
+  document.getElementById('ajDesc').value='';
+  document.getElementById('ajPage').value='';
+  openModal('modalAddJob');
+}
+function openEditJob(id){
+  const j=state.jobs.find(x=>x.id===id);
+  document.getElementById('ajTitle').textContent='직업 편집';
+  document.getElementById('ajId').value=id;
+  document.getElementById('ajName').value=j.name;
+  document.getElementById('ajEmoji').value=j.emoji;
+  document.getElementById('ajCount').value=j.maxCount;
+  document.getElementById('ajSalary').value=j.salary;
+  document.getElementById('ajDesc').value=j.desc;
+  document.getElementById('ajPage').value=j.page||'';
+  openModal('modalAddJob');
+}
+function saveJob(){
+  const id=document.getElementById('ajId').value;
+  const name=document.getElementById('ajName').value.trim();
+  const emoji=document.getElementById('ajEmoji').value||'💼';
+  const maxCount=parseInt(document.getElementById('ajCount').value)||1;
+  const salary=parseInt(document.getElementById('ajSalary').value)||0;
+  const desc=document.getElementById('ajDesc').value;
+  const page=document.getElementById('ajPage').value;
+  if(!name)return toast('직업 이름 입력');
+  if(id){
+    const j=state.jobs.find(x=>x.id===parseInt(id));
+    Object.assign(j,{name,emoji,maxCount,salary,desc,page});
+    toast('직업 수정됨');
+  } else {
+    const nid=Math.max(0,...state.jobs.map(j=>j.id))+1;
+    state.jobs.push({id:nid,name,emoji,maxCount,salary,desc,page});
+    toast('직업 추가됨');
+  }
+  closeModal('modalAddJob');
+  renderTeachJobs();
+}
+function deleteJob(id){
+  if(!confirm('이 직업을 삭제합니까? 배정된 학생들의 직업이 해제됩니다.'))return;
+  state.students.forEach(s=>{if(s.jobId===id)s.jobId=null;});
+  state.jobs=state.jobs.filter(x=>x.id!==id);
+  toast('직업 삭제됨');
+  renderTeachJobs();
+}
+function openAssignJob(jobId){
+  const job=state.jobs.find(x=>x.id===jobId);
+  document.getElementById('ajJobTitle').textContent=`${job.emoji} ${job.name} — 학생 배정 (최대 ${job.maxCount}명)`;
+  const assigned=state.students.filter(s=>s.jobId===jobId);
+  document.getElementById('ajJobBody').innerHTML=`
+  <div style="margin-bottom:12px;font-size:13px;color:var(--muted)">체크하면 배정, 해제하면 직업 없음으로 변경됩니다.</div>
+  ${state.students.map(s=>`<div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:10px">
+    <input type="checkbox" id="asgn_${s.id}" ${s.jobId===jobId?'checked':''} onchange="toggleAssign(${s.id},${jobId})">
+    <label for="asgn_${s.id}" style="flex:1;cursor:pointer">${s.name}</label>
+    <span style="font-size:12px;color:var(--muted)">${s.jobId&&s.jobId!==jobId?(state.jobs.find(j=>j.id===s.jobId)?.name||''):'현재 직업 없음'}</span>
+  </div>`).join('')}`;
+  openModal('modalAssignJob');
+}
+function toggleAssign(studentId,jobId){
+  const s=state.students.find(x=>x.id===studentId);
+  const job=state.jobs.find(x=>x.id===jobId);
+  const assigned=state.students.filter(x=>x.jobId===jobId);
+  if(s.jobId===jobId){s.jobId=null;}
+  else{
+    if(assigned.length>=job.maxCount){
+      document.getElementById('asgn_'+studentId).checked=false;
+      toast(`최대 ${job.maxCount}명 초과`);return;
+    }
+    s.jobId=jobId;
+  }
+}
+
+// ==================== SHOP ====================
+function renderTeachShop(){
+  document.getElementById('teach-shop').innerHTML=`
+  <div class="card">
+    <div class="sec-head"><div class="sec-title">상점 관리</div><button class="btn btn-p btn-sm2" onclick="openModal('modalAddItem')">+ 추가</button></div>
+    ${state.storeItems.map(item=>`<div class="li">
+      <div style="font-size:20px">${item.emoji}</div>
+      <div style="flex:1"><div style="font-size:13px;font-weight:600">${item.name}</div><div style="font-size:11px;color:var(--muted)">${item.desc}</div></div>
+      <div style="font-size:13px;font-weight:600;color:var(--primary)">${item.price} ${C()}</div>
+      <div style="font-size:12px;color:var(--muted);margin-left:8px">재고 ${item.stock}</div>
+      <button class="btn btn-o btn-sm2" style="margin-left:6px" onclick="restockItem(${item.id})">+10</button>
+      <button class="btn btn-d btn-sm2" style="margin-left:4px" onclick="removeItem(${item.id})">삭제</button>
+    </div>`).join('')}
+  </div>`;
+}
+function restockItem(id){const item=state.storeItems.find(x=>x.id===id);item.stock+=10;toast(`${item.name} 재고 +10`);renderTeachShop();}
+function removeItem(id){state.storeItems=state.storeItems.filter(x=>x.id!==id);renderTeachShop();}
+function addStoreItem(){
+  const name=document.getElementById('niName').value.trim();
+  const emoji=document.getElementById('niEmoji').value||'📦';
+  const price=parseInt(document.getElementById('niPrice').value)||50;
+  const stock=parseInt(document.getElementById('niStock').value)||10;
+  const desc=document.getElementById('niDesc').value||'';
+  if(!name)return toast('이름 입력');
+  const id=Math.max(0,...state.storeItems.map(x=>x.id))+1;
+  state.storeItems.push({id,name,emoji,price,stock,desc});
+  toast(`${emoji} ${name} 추가됨`);
+  closeModal('modalAddItem');
+  renderTeachShop();
+}
+
+// ==================== SETTINGS ====================
+function renderTeachSettings(){
+  document.getElementById('teach-settings').innerHTML=`
+  <div class="grid-2">
+    <div class="card">
+      <div class="settings-st">은행 정보</div>
+      <div class="fg"><div class="fl2"><label>학년</label><input type="number" class="fi2" id="cfGrade" value="${cfg.grade}" min="1" max="6"></div></div>
+      <div class="fg"><div class="fl2"><label>반</label><input type="number" class="fi2" id="cfClass" value="${cfg.classNum}" min="1" max="20"></div></div>
+      <div class="fg"><div class="fl2"><label>은행 이름</label><input type="text" class="fi2" id="cfBank" value="${cfg.bankName}" maxlength="12"></div></div>
+      <div class="fg"><div class="fl2"><label>화폐 이름</label><input type="text" class="fi2" id="cfCoin" value="${cfg.coinName}" maxlength="6"></div></div>
+      <div class="fg"><div class="fl2"><label>화폐 기호</label><input type="text" class="fi2" id="cfSymbol" value="${cfg.coinSymbol}" maxlength="2"></div></div>
+      <div class="fg"><div class="fl2"><label>교사 비밀번호</label><input type="text" class="fi2" id="cfTpw" value="${cfg.teacherPw}"></div></div>
+      <button class="btn btn-p" style="width:100%" onclick="saveCfg()">저장</button>
+      <div class="preview-box" id="cfPreview"></div>
+    </div>
+    <div class="card">
+      <div class="settings-st">기능 설정</div>
+      ${[
+        ['cfAllowTransfer','학생 간 송금','학생끼리 직접 코인 거래',cfg.allowTransfer],
+        ['cfAllowStock','주식 거래','학생의 매수/매도 허용',cfg.allowStock],
+        ['cfAllowStore','상점 구매','학생의 상점 구매 허용',cfg.allowStore],
+        ['cfShowBalance','잔액 공개','랭킹에서 금액 표시',cfg.showBalance],
+        ['cfForceMarket','주식 강제 개장','운영시간 외 거래 허용',cfg.forceMarket],
+      ].map(([id,label,desc,val])=>`<div class="toggle-row">
+        <div><div style="font-size:14px;font-weight:500">${label}</div><div style="font-size:12px;color:var(--muted)">${desc}</div></div>
+        <label class="tgl"><input type="checkbox" id="${id}" ${val?'checked':''} onchange="saveCfgToggles()"><span class="tgl-s"></span></label>
+      </div>`).join('')}
+    </div>
+  </div>`;
+  updateCfgPreview();
+  ['cfGrade','cfClass','cfBank','cfCoin','cfSymbol'].forEach(id=>{
+    document.getElementById(id).addEventListener('input',updateCfgPreview);
+  });
+}
+function updateCfgPreview(){
+  const g=document.getElementById('cfGrade')?.value||cfg.grade;
+  const cl=document.getElementById('cfClass')?.value||cfg.classNum;
+  const bn=document.getElementById('cfBank')?.value||cfg.bankName;
+  const cn=document.getElementById('cfCoin')?.value||cfg.coinName;
+  const cs=document.getElementById('cfSymbol')?.value||cfg.coinSymbol;
+  const p=document.getElementById('cfPreview');if(p)p.innerHTML=`<span style="font-size:12px;color:var(--muted)">미리보기</span><br><b>${g}-${cl}반 ${bn}</b><br>화폐: ${cs} ${cn}`;
+}
+function saveCfg(){
+  cfg.grade=parseInt(document.getElementById('cfGrade').value)||3;
+  cfg.classNum=parseInt(document.getElementById('cfClass').value)||2;
+  cfg.bankName=document.getElementById('cfBank').value||'교실 은행';
+  cfg.coinName=document.getElementById('cfCoin').value||'코인';
+  cfg.coinSymbol=document.getElementById('cfSymbol').value||'🪙';
+  cfg.teacherPw=document.getElementById('cfTpw').value||'teacher123';
+  applyGlobalCfg();
+  toast('설정 저장됨');
+}
+function saveCfgToggles(){
+  cfg.allowTransfer=document.getElementById('cfAllowTransfer')?.checked??cfg.allowTransfer;
+  cfg.allowStock=document.getElementById('cfAllowStock')?.checked??cfg.allowStock;
+  cfg.allowStore=document.getElementById('cfAllowStore')?.checked??cfg.allowStore;
+  cfg.showBalance=document.getElementById('cfShowBalance')?.checked??cfg.showBalance;
+  cfg.forceMarket=document.getElementById('cfForceMarket')?.checked??cfg.forceMarket;
+  toast('설정 적용됨');
+}
+function applyGlobalCfg(){
+  document.getElementById('navBadge').textContent=`${cfg.grade}-${cfg.classNum}반`;
+  document.getElementById('navBankName').textContent=cfg.bankName;
+  applyLoginInfo();
+}
+
+// Reset cleanStatus at midnight (new day)
+let _lastDay=new Date().toLocaleDateString('ko-KR');
+setInterval(()=>{
+  const d=new Date().toLocaleDateString('ko-KR');
+  if(d!==_lastDay){
+    _lastDay=d;
+    state.cleanStatus={};
+    state.seatStatus={};
+    if(isDbReady()){
+      sb.from('clean_status').delete().neq('student_id',0);
+      sb.from('seat_status').delete().neq('student_id',0);
+    }
+    toast('새 날이 시작되었습니다. 청소·자리 현황이 초기화되었습니다.');
+  }
+},60000);
+
+// ==================== STOCK PRICE UPDATE ====================
+setInterval(()=>{
+  if(!isMarketOpen())return;
+  COMPANIES.forEach(c=>{
+    const stk=state.stocks[c.code];
+    const chg=(Math.random()-.48)*.05;
+    const np=Math.round(stk.price*(1+chg));
+    stk.daily.push(np);if(stk.daily.length>90)stk.daily.shift();
+    stk.price=np;
+  });
+  if(document.getElementById('page-stock')?.classList.contains('active')){renderStockList();if(state.selectedStock)selectStock(state.selectedStock);}
+  updateNavBal();
+},30000);
+
+setInterval(()=>{
+  if(document.getElementById('page-stock')?.classList.contains('active'))updateMarketStatus();
+},60000);
+
+// Salary auto-pay on 17th
+setInterval(()=>{
+  const now=new Date();
+  if(now.getDate()===17&&now.getHours()===9&&now.getMinutes()===0){paySalaries();}
+},60000);
+
+// ==================== INIT ====================
+populateLoginStudentSel();
+applyLoginInfo();
+
+// ==================== SUPABASE DB LAYER ====================
+function setDbStatus(status){
+  const el=document.getElementById('dbStatusBadge');
+  if(!el)return;
+  if(status==='online'){el.textContent='🟢 실시간';el.style.background='rgba(45,158,107,.4)';el.style.color='#a0f0c8';}
+  else if(status==='offline'){el.textContent='⚫ 오프라인';el.style.background='rgba(255,255,255,.1)';el.style.color='rgba(255,255,255,.5)';}
+  else if(status==='error'){el.textContent='🔴 DB오류';el.style.background='rgba(217,79,79,.4)';el.style.color='#ffaaaa';}
+  else{el.textContent='⏳ 연결 중';el.style.background='rgba(232,184,75,.3)';el.style.color='#ffe090';}
+}
+
+// ---- LOAD ALL STATE FROM DB ----
+async function loadStateFromDb(){
+  if(!isDbReady())return false;
+  try{
+    setDbStatus('connecting');
+    // 1. config
+    const {data:cfgRow}=await sb.from('config').select('*').single();
+    if(cfgRow){
+      cfg.grade=cfgRow.grade??cfg.grade;
+      cfg.classNum=cfgRow.class_num??cfg.classNum;
+      cfg.bankName=cfgRow.bank_name??cfg.bankName;
+      cfg.coinName=cfgRow.coin_name??cfg.coinName;
+      cfg.coinSymbol=cfgRow.coin_symbol??cfg.coinSymbol;
+      cfg.teacherPw=cfgRow.teacher_pw??cfg.teacherPw;
+      cfg.allowTransfer=cfgRow.allow_transfer??cfg.allowTransfer;
+      cfg.allowStock=cfgRow.allow_stock??cfg.allowStock;
+      cfg.allowStore=cfgRow.allow_store??cfg.allowStore;
+      cfg.showBalance=cfgRow.show_balance??cfg.showBalance;
+      cfg.forceMarket=cfgRow.force_market??cfg.forceMarket;
+    }
+    // 2. students
+    const {data:students}=await sb.from('students').select('*').order('id');
+    if(students&&students.length){
+      state.students=students.map(r=>({
+        id:r.id,name:r.name,pw:r.pw,balance:r.balance,
+        transactions:r.transactions||[],portfolio:r.portfolio||{},
+        items:r.items||[],earned:r.earned||0,spent:r.spent||0,
+        jobId:r.job_id,activityLog:r.activity_log||{},attendanceAbsent:r.attendance_absent||0,
+      }));
+    }
+    // 3. jobs
+    const {data:jobs}=await sb.from('jobs').select('*').order('id');
+    if(jobs&&jobs.length){
+      state.jobs=jobs.map(r=>({id:r.id,name:r.name,emoji:r.emoji,maxCount:r.max_count,salary:r.salary,desc:r.description,page:r.page_content||''}));
+    }
+    // 4. store items
+    const {data:items}=await sb.from('store_items').select('*').order('id');
+    if(items&&items.length){
+      state.storeItems=items.map(r=>({id:r.id,name:r.name,emoji:r.emoji,price:r.price,stock:r.stock,desc:r.description||''}));
+    }
+    // 5. stocks
+    const {data:stocks}=await sb.from('stocks').select('*');
+    if(stocks&&stocks.length){
+      stocks.forEach(r=>{
+        if(state.stocks[r.code]){
+          state.stocks[r.code].price=r.price;
+          state.stocks[r.code].prevClose=r.prev_close;
+          if(r.daily)state.stocks[r.code].daily=r.daily;
+          if(r.monthly)state.stocks[r.code].monthly=r.monthly;
+        }
+      });
+    }
+    // 6. clean status
+    const {data:clean}=await sb.from('clean_status').select('*');
+    if(clean)clean.forEach(r=>{state.cleanStatus[r.student_id]=r.status;});
+
+    // 7. seat status
+    const {data:seats}=await sb.from('seat_status').select('*');
+    if(seats)seats.forEach(r=>{state.seatStatus[r.student_id]=r.status;});
+
+    populateLoginStudentSel();
+    applyLoginInfo();
+    applyGlobalCfg();
+    setDbStatus('online');
+    return true;
+  }catch(e){
+    console.error('DB 로드 실패',e);
+    setDbStatus('error');
+    return false;
+  }
+}
+
+// ---- SAVE HELPERS ----
+async function dbSaveStudent(s){
+  if(!isDbReady())return;
+  await sb.from('students').upsert({
+    id:s.id,name:s.name,pw:s.pw,balance:s.balance,
+    transactions:s.transactions,portfolio:s.portfolio,items:s.items,
+    earned:s.earned,spent:s.spent,job_id:s.jobId,
+    activity_log:s.activityLog,attendance_absent:s.attendanceAbsent,
+  },{onConflict:'id'});
+}
+async function dbSaveConfig(){
+  if(!isDbReady())return;
+  await sb.from('config').upsert({
+    id:1,grade:cfg.grade,class_num:cfg.classNum,bank_name:cfg.bankName,
+    coin_name:cfg.coinName,coin_symbol:cfg.coinSymbol,teacher_pw:cfg.teacherPw,
+    allow_transfer:cfg.allowTransfer,allow_stock:cfg.allowStock,
+    allow_store:cfg.allowStore,show_balance:cfg.showBalance,force_market:cfg.forceMarket,
+  },{onConflict:'id'});
+}
+async function dbSaveJob(j){
+  if(!isDbReady())return;
+  await sb.from('jobs').upsert({
+    id:j.id,name:j.name,emoji:j.emoji,max_count:j.maxCount,
+    salary:j.salary,description:j.desc,page_content:j.page||'',
+  },{onConflict:'id'});
+}
+async function dbDeleteJob(id){
+  if(!isDbReady())return;
+  await sb.from('jobs').delete().eq('id',id);
+}
+async function dbSaveStoreItem(item){
+  if(!isDbReady())return;
+  await sb.from('store_items').upsert({
+    id:item.id,name:item.name,emoji:item.emoji,price:item.price,
+    stock:item.stock,description:item.desc,
+  },{onConflict:'id'});
+}
+async function dbDeleteStoreItem(id){
+  if(!isDbReady())return;
+  await sb.from('store_items').delete().eq('id',id);
+}
+async function dbSaveCleanStatus(studentId,status){
+  if(!isDbReady())return;
+  await sb.from('clean_status').upsert({student_id:studentId,status,updated_at:new Date().toISOString()},{onConflict:'student_id'});
+}
+async function dbSaveSeatStatus(studentId,status){
+  if(!isDbReady())return;
+  await sb.from('seat_status').upsert({student_id:studentId,status,updated_at:new Date().toISOString()},{onConflict:'student_id'});
+}
+async function dbSaveStock(code){
+  if(!isDbReady())return;
+  const stk=state.stocks[code];
+  await sb.from('stocks').upsert({code,price:stk.price,prev_close:stk.prevClose,daily:stk.daily,monthly:stk.monthly},{onConflict:'code'});
+}
+async function dbInitStocks(){
+  if(!isDbReady())return;
+  const rows=COMPANIES.map(c=>{
+    const stk=state.stocks[c.code];
+    return{code:c.code,price:stk.price,prev_close:stk.prevClose,daily:stk.daily,monthly:stk.monthly};
+  });
+  await sb.from('stocks').upsert(rows,{onConflict:'code',ignoreDuplicates:true});
+}
+
+// ---- REALTIME SUBSCRIPTIONS ----
+function subscribeRealtime(){
+  if(!isDbReady())return;
+  // Unsubscribe existing
+  realtimeSubs.forEach(s=>sb.removeChannel(s));
+  realtimeSubs=[];
+
+  // students changes
+  const ch1=sb.channel('students-changes')
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'students'},payload=>{
+      const r=payload.new;
+      const s=state.students.find(x=>x.id===r.id);
+      if(s&&s.id!==session.studentId){
+        Object.assign(s,{balance:r.balance,transactions:r.transactions||[],portfolio:r.portfolio||{},
+          items:r.items||[],earned:r.earned||0,spent:r.spent||0,jobId:r.job_id,
+          activityLog:r.activity_log||{},attendanceAbsent:r.attendance_absent||0});
+        // If teacher is viewing, refresh
+        refreshCurrentPage();
+      } else if(s&&s.id===session.studentId){
+        Object.assign(s,{balance:r.balance,transactions:r.transactions||[],portfolio:r.portfolio||{},
+          items:r.items||[],earned:r.earned||0,spent:r.spent||0,jobId:r.job_id,
+          activityLog:r.activity_log||{},attendanceAbsent:r.attendance_absent||0});
+        updateNavBal();
+        refreshCurrentPage();
+      }
+    }).subscribe();
+  realtimeSubs.push(ch1);
+
+  // clean_status changes
+  const ch2=sb.channel('clean-changes')
+    .on('postgres_changes',{event:'*',schema:'public',table:'clean_status'},payload=>{
+      const r=payload.new||payload.old;
+      if(r){state.cleanStatus[r.student_id]=r.status;}
+      refreshCurrentPage();
+    }).subscribe();
+  realtimeSubs.push(ch2);
+
+  // seat_status changes
+  const ch2b=sb.channel('seat-changes')
+    .on('postgres_changes',{event:'*',schema:'public',table:'seat_status'},payload=>{
+      const r=payload.new||payload.old;
+      if(r){state.seatStatus[r.student_id]=r.status;}
+      refreshCurrentPage();
+    }).subscribe();
+  realtimeSubs.push(ch2b);
+
+  // store_items changes
+  const ch3=sb.channel('store-changes')
+    .on('postgres_changes',{event:'*',schema:'public',table:'store_items'},payload=>{
+      const r=payload.new;
+      if(r){const idx=state.storeItems.findIndex(x=>x.id===r.id);
+        const item={id:r.id,name:r.name,emoji:r.emoji,price:r.price,stock:r.stock,desc:r.description||''};
+        if(idx>=0)state.storeItems[idx]=item;else state.storeItems.push(item);
+        refreshCurrentPage();
+      }
+    }).subscribe();
+  realtimeSubs.push(ch3);
+
+  // config changes
+  const ch4=sb.channel('config-changes')
+    .on('postgres_changes',{event:'*',schema:'public',table:'config'},payload=>{
+      const r=payload.new;
+      if(r){
+        cfg.bankName=r.bank_name??cfg.bankName;cfg.coinName=r.coin_name??cfg.coinName;
+        cfg.coinSymbol=r.coin_symbol??cfg.coinSymbol;cfg.allowTransfer=r.allow_transfer??cfg.allowTransfer;
+        cfg.allowStock=r.allow_stock??cfg.allowStock;cfg.allowStore=r.allow_store??cfg.allowStore;
+        cfg.showBalance=r.show_balance??cfg.showBalance;cfg.forceMarket=r.force_market??cfg.forceMarket;
+        applyGlobalCfg();refreshCurrentPage();
+      }
+    }).subscribe();
+  realtimeSubs.push(ch4);
+
+  setDbStatus('online');
+}
+
+function refreshCurrentPage(){
+  const active=document.querySelector('.page.active');
+  if(!active)return;
+  const id=active.id.replace('page-','');
+  renderPage(id);
+}
+
+// ---- PATCH existing functions to also save to DB ----
+// Wrap addTx to auto-save student
+const _origAddTx = addTx;
+addTx = (student, amount, desc) => {
+  _origAddTx(student, amount, desc);
+  dbSaveStudent(student);
+};
+
+// ---- DB INIT: seed initial data if tables are empty ----
+async function dbSeedIfEmpty(){
+  if(!isDbReady())return;
+  // seed config
+  const {data:cfgRows,error}=await sb.from('config').select('id').limit(1);
+  if(!cfgRows||cfgRows.length===0){
+    await sb.from('config').insert({
+      id:1,grade:cfg.grade,class_num:cfg.classNum,bank_name:cfg.bankName,
+      coin_name:cfg.coinName,coin_symbol:cfg.coinSymbol,teacher_pw:cfg.teacherPw,
+      allow_transfer:true,allow_stock:true,allow_store:true,show_balance:true,force_market:false,
+    });
+  }
+  // seed students
+  const {data:stuRows}=await sb.from('students').select('id').limit(1);
+  if(!stuRows||stuRows.length===0){
+    const rows=state.students.map(s=>({
+      id:s.id,name:s.name,pw:s.pw,balance:s.balance,
+      transactions:[],portfolio:{},items:[],earned:s.balance,spent:0,
+      job_id:s.jobId,activity_log:{},attendance_absent:0,
+    }));
+    await sb.from('students').insert(rows);
+  }
+  // seed jobs
+  const {data:jobRows}=await sb.from('jobs').select('id').limit(1);
+  if(!jobRows||jobRows.length===0){
+    const rows=state.jobs.map(j=>({id:j.id,name:j.name,emoji:j.emoji,max_count:j.maxCount,salary:j.salary,description:j.desc,page_content:j.page||''}));
+    await sb.from('jobs').insert(rows);
+  }
+  // seed store_items
+  const {data:itemRows}=await sb.from('store_items').select('id').limit(1);
+  if(!itemRows||itemRows.length===0){
+    const rows=state.storeItems.map(i=>({id:i.id,name:i.name,emoji:i.emoji,price:i.price,stock:i.stock,description:i.desc}));
+    await sb.from('store_items').insert(rows);
+  }
+  // seed stocks
+  await dbInitStocks();
+}
+
+// ---- PATCH: DB 저장 연동 (함수 재할당 방식 — 호이스팅 문제 없음) ----
+// 원본 함수를 변수에 저장한 뒤 window 전역에 화살표 함수로 덮어씁니다.
+
+const _orig = {
+  markCleanDone: markCleanDone,
+  verifyClean: verifyClean,
+  markAbsentClean: markAbsentClean,
+  teachMarkActivity: teachMarkActivity,
+  paySalaries: paySalaries,
+  teachGive: teachGive,
+  teachGiveAll: teachGiveAll,
+  addStudent: addStudent,
+  removeStudent: removeStudent,
+  saveJob: saveJob,
+  deleteJob: deleteJob,
+  addStoreItem: addStoreItem,
+  removeItem: removeItem,
+  restockItem: restockItem,
+  buyItem: buyItem,
+  saveCfg: saveCfg,
+  saveCfgToggles: saveCfgToggles,
+  doStockBuy: doStockBuy,
+  doStockSell: doStockSell,
+  doTransfer: doTransfer,
+  changePw: changePw,
+  editStudentPw: editStudentPw,
+  toggleAssign: toggleAssign,
+  updateNavBal: updateNavBal,
+};
+
+markCleanDone = (studentId) => {
+  _orig.markCleanDone(studentId);
+  dbSaveCleanStatus(studentId, 'done');
+};
+verifyClean = (studentId) => {
+  _orig.verifyClean(studentId);
+  dbSaveCleanStatus(studentId, 'checked');
+  const s = state.students.find(x => x.id === studentId);
+  if(s) dbSaveStudent(s);
+};
+markAbsentClean = (studentId) => {
+  _orig.markAbsentClean(studentId);
+  dbSaveCleanStatus(studentId, 'absent');
+  const s = state.students.find(x => x.id === studentId);
+  if(s) dbSaveStudent(s);
+};
+teachMarkActivity = (studentId, status) => {
+  _orig.teachMarkActivity(studentId, status);
+  const s = state.students.find(x => x.id === studentId);
+  if(s) dbSaveStudent(s);
+};
+paySalaries = async () => {
+  _orig.paySalaries();
+  for(const s of state.students){ if(s.jobId) await dbSaveStudent(s); }
+};
+teachGive = (sign) => {
+  _orig.teachGive(sign);
+  const id = parseInt(document.getElementById('tcSel')?.value);
+  const s = state.students.find(x => x.id === id);
+  if(s) dbSaveStudent(s);
+};
+teachGiveAll = async () => {
+  _orig.teachGiveAll();
+  for(const s of state.students) await dbSaveStudent(s);
+};
+addStudent = async () => {
+  _orig.addStudent();
+  const s = state.students[state.students.length - 1];
+  if(s && isDbReady()){
+    await sb.from('students').insert({
+      id:s.id, name:s.name, pw:s.pw, balance:s.balance,
+      transactions:[], portfolio:{}, items:[], earned:s.balance, spent:0,
+      job_id:null, activity_log:{}, attendance_absent:0,
+    });
+  }
+};
+removeStudent = async (id) => {
+  _orig.removeStudent(id);
+  if(isDbReady()) await sb.from('students').delete().eq('id', id);
+};
+saveJob = () => {
+  _orig.saveJob();
+  const id = document.getElementById('ajId').value;
+  if(id){ const j=state.jobs.find(x=>x.id===parseInt(id)); if(j) dbSaveJob(j); }
+  else { const j=state.jobs[state.jobs.length-1]; if(j) dbSaveJob(j); }
+};
+deleteJob = (id) => { _orig.deleteJob(id); dbDeleteJob(id); };
+addStoreItem = () => { _orig.addStoreItem(); const i=state.storeItems[state.storeItems.length-1]; if(i) dbSaveStoreItem(i); };
+removeItem = (id) => { _orig.removeItem(id); dbDeleteStoreItem(id); };
+restockItem = (id) => { _orig.restockItem(id); const i=state.storeItems.find(x=>x.id===id); if(i) dbSaveStoreItem(i); };
+buyItem = async (id) => {
+  _orig.buyItem(id);
+  const s = cur(); if(s) await dbSaveStudent(s);
+  const item = state.storeItems.find(x => x.id === id); if(item) dbSaveStoreItem(item);
+};
+saveCfg = () => { _orig.saveCfg(); dbSaveConfig(); };
+saveCfgToggles = () => { _orig.saveCfgToggles(); dbSaveConfig(); };
+doStockBuy = () => { _orig.doStockBuy(); const s=cur(); if(s) dbSaveStudent(s); };
+doStockSell = () => { _orig.doStockSell(); const s=cur(); if(s) dbSaveStudent(s); };
+doTransfer = async () => { _orig.doTransfer(); for(const s of state.students) await dbSaveStudent(s); };
+changePw = async () => { _orig.changePw(); const s=cur(); if(s) await dbSaveStudent(s); };
+editStudentPw = async (id) => { _orig.editStudentPw(id); const s=state.students.find(x=>x.id===id); if(s) await dbSaveStudent(s); };
+toggleAssign = async (studentId, jobId) => { _orig.toggleAssign(studentId, jobId); const s=state.students.find(x=>x.id===studentId); if(s) await dbSaveStudent(s); };
+
+// 주식 저장 (5번마다 throttle)
+let _stockSaveCounter = 0;
+updateNavBal = () => {
+  _orig.updateNavBal();
+  _stockSaveCounter++;
+  if(_stockSaveCounter % 5 === 0 && isDbReady()){
+    COMPANIES.forEach(c => dbSaveStock(c.code));
+  }
+};
+
+// ==================== APP BOOT WITH DB ====================
+async function bootApp(){
+  initSupabase();
+  if(isDbReady()){
+    setDbStatus('connecting');
+    await dbSeedIfEmpty();
+    await loadStateFromDb();
+    subscribeRealtime();
+  } else {
+    setDbStatus('offline');
+    console.warn('Supabase URL이 설정되지 않았습니다. 오프라인 모드로 실행됩니다.');
+  }
+  populateLoginStudentSel();
+  applyLoginInfo();
+}
+
+bootApp();
+</script>
+</body>
+</html>
